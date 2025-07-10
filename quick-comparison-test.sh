@@ -3,8 +3,8 @@
 # Quick comparison test for system prompt behavior
 # Replace the API keys below with your actual keys
 
-CLAUDE_KEY="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"
-LIFX_KEY="cd3e35559770ccc1f6a4295e2ab51fc3b3a68142a8ed0b2cb7da0f2333d7a285"
+CLAUDE_KEY="put your-claude-api-key-here"
+LIFX_KEY="put your-lifx-api-key-here"
 SESSION_ID="comparison-test-$(date +%s)"
 
 echo "🔬 Testing System Prompt Behavior"
