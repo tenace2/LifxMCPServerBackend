@@ -2,6 +2,10 @@
 
 A secure backend server for the LIFX-Claude smart light control application. This server provides RESTful API endpoints for controlling LIFX smart lights through Claude AI integration using the Model Context Protocol (MCP).
 
+Note this project was developed using Copilot AI agent Claude Sonnet 4.
+Please review the server_copilot_instructions.md document to obtain an
+overview of the guidelines the AI agent used when developing this project.
+
 ## 🏗️ Architecture
 
 ```
@@ -174,22 +178,37 @@ ALLOWED_ORIGINS=https://tenace2.github.io
 ### Project Structure
 
 ```
-server/
-├── mcp-server-manager.js     # Main HTTP API server
-├── lifx-api-mcp-server.js    # MCP server (child process)
-├── package.json              # Dependencies and scripts
-├── railway.json              # Railway deployment config
-├── middleware/
-│   ├── auth.js               # Access control
-│   ├── rateLimit.js          # Rate limiting logic
-│   └── validation.js         # Input validation
-├── services/
-│   ├── claudeApi.js          # Claude API integration
-│   ├── mcpManager.js         # MCP process management
-│   └── logger.js             # Logging configuration
-└── utils/
-    ├── security.js           # Security utilities
-    └── cleanup.js            # Resource cleanup
+LifxMCPServerBackend/
+├── mcp-server-manager.js           # Main HTTP API server
+├── lifx-api-mcp-server.js          # MCP server (child process)
+├── package.json                    # Dependencies and scripts
+├── railway.json                    # Railway deployment config
+├── README.md                       # This documentation
+├── .env.example                    # Environment variables template
+├── server_copilot_instructions.md  # AI assistant instructions
+├── curl-commands-manual.md         # Manual API testing commands
+├── demo-session-info.js            # Demo session utilities
+├── test-*.js                       # Various test scripts
+├── *.sh                           # Shell scripts for testing/monitoring
+├── docs/                          # Documentation
+│   ├── COMPLETE_SETUP_GUIDE.md    # Comprehensive setup guide
+│   ├── client-implementation-guide.md # Client integration guide
+│   ├── client-integration-example.js  # Example client code
+│   └── system-prompt-investigation.md # System prompt analysis
+├── middleware/                     # Express middleware
+│   ├── auth.js                    # Access control
+│   ├── rateLimit.js               # Rate limiting logic
+│   └── validation.js              # Input validation
+├── services/                      # Core services
+│   ├── claudeApi.js               # Claude API integration
+│   ├── mcpManager.js              # MCP process management
+│   └── logger.js                  # Logging configuration
+├── tests/                         # Test suites
+│   └── integration/
+│       └── server.test.js         # Integration tests
+└── utils/                         # Utility modules
+    ├── security.js                # Security utilities
+    └── cleanup.js                 # Resource cleanup
 ```
 
 ### Scripts
@@ -199,6 +218,31 @@ npm start       # Start production server
 npm run dev     # Start development server with nodemon
 npm test        # Run tests (when implemented)
 ```
+
+### Testing
+
+The project includes multiple types of tests for different purposes:
+
+**Quick Testing:**
+
+- `simple-test.sh` - Basic functionality test with curl commands
+- `quick-comparison-test.sh` - System prompt behavior comparison
+
+**API Testing:**
+
+- `test-system-prompt.js` - Comprehensive system prompt testing
+- `test-mcp-direct.js` - Direct MCP server testing
+- `demo-session-info.js` - Session management demonstration
+
+**Monitoring:**
+
+- `monitor-usage.sh` - Real-time server usage monitoring
+
+**Unit/Integration Tests:**
+
+- `tests/integration/server.test.js` - Formal test suite (Jest/Supertest)
+
+For detailed testing instructions, see [Testing Guide](docs/testing-guide.md).
 
 ### Debugging
 
