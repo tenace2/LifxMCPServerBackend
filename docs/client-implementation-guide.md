@@ -62,10 +62,11 @@ const sessionId = `session_${Date.now()}_${Math.random()
 
 ### Session Rules
 
-- **One session per IP address** - Multiple sessions from the same IP are blocked
+- **Multi-user support** - Multiple users can access simultaneously with unique sessions
 - **100 requests per session** (configurable via environment variables)
 - **24-hour session expiry** (configurable)
 - Sessions are automatically cleaned up on expiry
+- Each session is tracked independently regardless of IP address
 
 ## Session Info Endpoint
 
@@ -269,7 +270,6 @@ The server includes rate limiting information in response headers:
 | Code                 | Description                       | HTTP Status |
 | -------------------- | --------------------------------- | ----------- |
 | `MISSING_SESSION_ID` | Session ID header missing         | 400         |
-| `MULTIPLE_SESSIONS`  | Multiple sessions from same IP    | 429         |
 | `SESSION_LIMIT`      | Session request limit exceeded    | 429         |
 | `IP_RATE_LIMIT`      | IP rate limit exceeded            | 429         |
 | `SERVER_BUSY`        | Too many concurrent MCP processes | 429         |

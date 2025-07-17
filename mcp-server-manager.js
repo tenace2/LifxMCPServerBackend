@@ -203,11 +203,11 @@ app.get('/api/info', (req, res) => {
 		],
 		authentication: 'Demo access key required in x-demo-key header',
 		rateLimit: {
-			sessionsPerIP: process.env.NODE_ENV === 'development' ? 10 : 1,
 			requestsPerSession: parseInt(process.env.SESSION_REQUEST_LIMIT) || 100,
 			ipRateLimit: `${process.env.IP_RATE_LIMIT_MAX || 30} requests per ${
 				process.env.IP_RATE_LIMIT_WINDOW || 60000
 			}ms`,
+			multiUserEnabled: true,
 			developmentMode: process.env.NODE_ENV === 'development',
 		},
 	});

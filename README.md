@@ -61,9 +61,10 @@ GitHub Pages Client → Railway HTTP API → MCP Server → LIFX API
 
 ### Session Management
 
-- **One session per IP** - Prevents abuse
+- **Multi-user support** - Multiple users can access simultaneously
 - **Session request limits** - 100 requests per session
 - **Automatic session cleanup** - Expires old sessions
+- **Unique session tracking** - Each user gets independent session limits
 
 ### Rate Limiting
 
@@ -144,6 +145,8 @@ Available actions:
 - `pulse_effect` - Apply pulse effect
 
 ## 🌍 Railway Deployment
+
+**Note:** This server is designed for cloud deployment with reverse proxy support. The multi-user session management works seamlessly with Railway's load balancing infrastructure.
 
 ### Environment Variables
 

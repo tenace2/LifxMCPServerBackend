@@ -13,17 +13,16 @@ const IP_RATE_LIMIT_WINDOW =
 	parseInt(process.env.IP_RATE_LIMIT_WINDOW) || 60000;
 const IP_RATE_LIMIT_MAX = parseInt(process.env.IP_RATE_LIMIT_MAX) || 30;
 
-// Development mode configuration
+// Multi-user configuration - removed IP-based session limits for cloud deployment
 const isDevelopment = process.env.NODE_ENV === 'development';
-const MAX_SESSIONS_PER_IP = isDevelopment ? 10 : 1; // Allow 10 sessions in dev, 1 in production
 
 logger.info('Session limits initialized', {
 	environment: process.env.NODE_ENV || 'production',
-	maxSessionsPerIP: MAX_SESSIONS_PER_IP,
+	sessionLimiting: 'session-based only (multi-user enabled)',
 	isDevelopmentMode: isDevelopment,
 });
 
-// Session tracker middleware
+// Session tracker middleware - supports multiple users
 const sessionTracker = (req, res, next) => {
 	const clientIP = req.ip;
 	const sessionId = req.headers['x-session-id'];
@@ -35,39 +34,21 @@ const sessionTracker = (req, res, next) => {
 		});
 	}
 
-	// Enforce session limit per IP (configurable based on environment)
+	// Track all sessions (no IP-based restrictions for multi-user support)
 	if (!ipSessionMap.has(clientIP)) {
 		ipSessionMap.set(clientIP, new Set());
 	}
 
 	const sessionsForIP = ipSessionMap.get(clientIP);
-	if (
-		sessionsForIP.size >= MAX_SESSIONS_PER_IP &&
-		!sessionsForIP.has(sessionId)
-	) {
-		logger.warn('Session limit exceeded for IP', {
-			ip: clientIP,
-			existingSessions: Array.from(sessionsForIP),
-			attemptedSession: sessionId,
-			maxAllowed: MAX_SESSIONS_PER_IP,
-			environment: process.env.NODE_ENV || 'production',
-		});
-
-		const errorMessage = isDevelopment
-			? `Maximum ${MAX_SESSIONS_PER_IP} sessions per IP allowed in development mode`
-			: 'One session per IP address allowed';
-
-		return res.status(429).json({
-			error: errorMessage,
-			code: 'MULTIPLE_SESSIONS',
-			maxSessionsAllowed: MAX_SESSIONS_PER_IP,
-			currentSessions: sessionsForIP.size,
-		});
-	}
 
 	// Track session creation time
 	if (!sessionTimestamps.has(sessionId)) {
 		sessionTimestamps.set(sessionId, Date.now());
+		logger.info('New session created', {
+			sessionId,
+			clientIP,
+			totalActiveSessions: sessionTimestamps.size,
+		});
 	}
 
 	sessionsForIP.add(sessionId);
