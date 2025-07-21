@@ -10,7 +10,7 @@ const setMcpLogCallback = (callback) => {
 	mcpLogCallback = callback;
 };
 
-// Helper to capture MCP logs
+// Helper to capture MCP logs with session context
 const captureMcpLog = (level, message, meta = {}) => {
 	if (mcpLogCallback) {
 		mcpLogCallback(level, message, meta);
@@ -21,8 +21,8 @@ const captureMcpLog = (level, message, meta = {}) => {
 const MCP_SPAWN_TIMEOUT = parseInt(process.env.MCP_SPAWN_TIMEOUT) || 30000;
 const MCP_METHOD_TIMEOUT = parseInt(process.env.MCP_METHOD_TIMEOUT) || 10000;
 
-// Spawn MCP server process
-const spawnMcpServer = async (lifxApiKey) => {
+// Spawn MCP server process with session context
+const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 	return new Promise((resolve, reject) => {
 		const serverPath = path.join(__dirname, '..', 'lifx-api-mcp-server.js');
 
@@ -31,6 +31,7 @@ const spawnMcpServer = async (lifxApiKey) => {
 				...process.env,
 				LIFX_TOKEN: lifxApiKey,
 				LOG_LEVEL: process.env.LOG_LEVEL || 'info',
+				SESSION_ID: sessionId || 'system', // Pass session context to child process
 			},
 			stdio: ['pipe', 'pipe', 'pipe'],
 		});
@@ -39,7 +40,10 @@ const spawnMcpServer = async (lifxApiKey) => {
 		const timeout = setTimeout(() => {
 			if (!mcpProcess.killed) {
 				mcpProcess.kill('SIGTERM');
-				logger.error('MCP server spawn timeout');
+				captureMcpLog('error', 'MCP server spawn timeout', {
+					sessionId,
+					pid: mcpProcess.pid,
+				});
 				reject(new Error('MCP server spawn timeout'));
 			}
 		}, MCP_SPAWN_TIMEOUT);
@@ -47,7 +51,10 @@ const spawnMcpServer = async (lifxApiKey) => {
 		// Handle successful spawn
 		mcpProcess.on('spawn', () => {
 			clearTimeout(timeout);
-			logger.debug('MCP server spawned successfully', { pid: mcpProcess.pid });
+			captureMcpLog('debug', 'MCP server spawned successfully', {
+				sessionId,
+				pid: mcpProcess.pid,
+			});
 			resolve(mcpProcess);
 		});
 

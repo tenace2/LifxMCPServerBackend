@@ -149,9 +149,13 @@ const cleanupSessions = () => {
 		parseInt(process.env.SESSION_MAX_AGE) || 24 * 60 * 60 * 1000; // 24 hours
 
 	let cleanedCount = 0;
+	const cleanedSessionIds = [];
 
 	for (const [sessionId, timestamp] of sessionTimestamps.entries()) {
 		if (now - timestamp > SESSION_MAX_AGE) {
+			// Track which sessions we're cleaning
+			cleanedSessionIds.push(sessionId);
+
 			// Remove from all tracking maps
 			sessionRequestCount.delete(sessionId);
 			sessionTimestamps.delete(sessionId);
@@ -166,6 +170,14 @@ const cleanupSessions = () => {
 
 			cleanedCount++;
 		}
+	}
+
+	// Clean up session logs if cleanup function is available (from main server)
+	if (
+		typeof global.cleanupSessionLogs === 'function' &&
+		cleanedSessionIds.length > 0
+	) {
+		global.cleanupSessionLogs(cleanedSessionIds);
 	}
 
 	if (cleanedCount > 0) {
@@ -223,6 +235,11 @@ const clearSession = (sessionId, clientIP = null) => {
 					break;
 				}
 			}
+		}
+
+		// Clean up session logs if cleanup function is available
+		if (typeof global.cleanupSessionLogs === 'function') {
+			global.cleanupSessionLogs(sessionId);
 		}
 
 		if (cleared) {

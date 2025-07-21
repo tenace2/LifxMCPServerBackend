@@ -287,7 +287,10 @@ app.post(
 		let mcpProcess = null;
 
 		try {
-			logger.info('Claude chat request', {
+			// Create session-aware logger
+			const sessionLogger = createSessionLogger(req.sessionId);
+
+			sessionLogger.info('Claude chat request', {
 				requestId: req.requestId,
 				sessionId: req.sessionId,
 				messageLength: message.length,
@@ -295,9 +298,8 @@ app.post(
 				maxTokens,
 			});
 
-			// Spawn MCP server with LIFX token
-			mcpProcess = await spawnMcpServer(lifxApiKey);
-
+			// Spawn MCP server with LIFX token and session context
+			mcpProcess = await spawnMcpServer(lifxApiKey, req.sessionId);
 			// Call Claude API with MCP tools
 			const claudeResponse = await callClaudeWithMcp(
 				claudeApiKey,
@@ -306,7 +308,7 @@ app.post(
 				{ systemPromptEnabled, maxTokens }
 			);
 
-			logger.info('Claude chat completed', {
+			sessionLogger.info('Claude chat completed', {
 				requestId: req.requestId,
 				sessionId: req.sessionId,
 				success: claudeResponse.success,
@@ -349,20 +351,22 @@ app.post(
 		let mcpProcess = null;
 
 		try {
-			logger.info('Direct LIFX control', {
+			// Create session-aware logger
+			const sessionLogger = createSessionLogger(req.sessionId);
+
+			sessionLogger.info('Direct LIFX control', {
 				requestId: req.requestId,
 				sessionId: req.sessionId,
 				action,
 				params: Object.keys(params),
 			});
 
-			// Spawn MCP server with LIFX token
-			mcpProcess = await spawnMcpServer(lifxApiKey);
-
+			// Spawn MCP server with LIFX token and session context
+			mcpProcess = await spawnMcpServer(lifxApiKey, req.sessionId);
 			// Call MCP method
 			const result = await callMcpMethod(mcpProcess, action, params);
 
-			logger.info('LIFX control completed', {
+			sessionLogger.info('LIFX control completed', {
 				requestId: req.requestId,
 				sessionId: req.sessionId,
 				action,
@@ -493,80 +497,219 @@ app.get('/api/session-info', accessControl, sessionTracker, (req, res) => {
 	}
 });
 
-// In-memory log storage (for development/testing)
+// Session-isolated log storage with system logs
 const logStorage = {
-	backend: [],
-	mcp: [],
-	maxLogEntries: 1000, // Limit log entries in memory
+	// System logs visible to all sessions (startup, config, critical errors)
+	system: {
+		backend: [],
+		mcp: [],
+	},
+	// Session-specific logs: sessionId → { backend: [], mcp: [] }
+	sessions: new Map(),
+	maxLogEntries: 500, // Reduced per storage area
+	maxSessions: 50, // Prevent memory bloat
 };
 
-// Add logs to storage
+// Helper to determine if a log should be system-wide
+const isSystemLog = (message, meta = {}) => {
+	const systemKeywords = [
+		'server started',
+		'server stopped',
+		'configuration loaded',
+		'session limits initialized',
+		'database connected',
+		'redis connected',
+		'critical error',
+		'server health',
+		'memory usage',
+		'startup',
+	];
+
+	// Check if it's a system-level log (no sessionId or contains system keywords)
+	const messageStr = message.toLowerCase();
+	const isSystemKeyword = systemKeywords.some((keyword) =>
+		messageStr.includes(keyword)
+	);
+	const hasNoSession = !meta.sessionId;
+	const isCritical =
+		meta.level === 'error' &&
+		(messageStr.includes('server') || messageStr.includes('critical'));
+
+	return (
+		isSystemKeyword ||
+		(hasNoSession && (isCritical || messageStr.includes('server')))
+	);
+};
+
+// Add logs to appropriate storage (system or session-specific)
 const addLogToStorage = (type, level, message, meta = {}) => {
 	const logEntry = {
 		timestamp: new Date().toISOString(),
 		level,
 		message,
-		meta,
+		meta: { ...meta, logType: meta.sessionId ? 'session' : 'system' },
 	};
 
-	if (logStorage[type]) {
-		logStorage[type].push(logEntry);
-		// Keep only the latest entries
-		if (logStorage[type].length > logStorage.maxLogEntries) {
-			logStorage[type] = logStorage[type].slice(-logStorage.maxLogEntries);
+	// Determine storage location
+	if (isSystemLog(message, { ...meta, level })) {
+		// Add to system logs
+		if (logStorage.system[type]) {
+			logStorage.system[type].push(logEntry);
+			// Keep only the latest entries
+			if (logStorage.system[type].length > logStorage.maxLogEntries) {
+				logStorage.system[type] = logStorage.system[type].slice(
+					-logStorage.maxLogEntries
+				);
+			}
+		}
+	} else if (meta.sessionId) {
+		// Add to session-specific logs
+		if (!logStorage.sessions.has(meta.sessionId)) {
+			// Check session limit to prevent memory bloat
+			if (logStorage.sessions.size >= logStorage.maxSessions) {
+				// Remove oldest session logs
+				const oldestSession = logStorage.sessions.keys().next().value;
+				logStorage.sessions.delete(oldestSession);
+				logger.warn('Removed oldest session logs due to memory limit', {
+					removedSession: oldestSession,
+					currentSessions: logStorage.sessions.size,
+				});
+			}
+			logStorage.sessions.set(meta.sessionId, { backend: [], mcp: [] });
+		}
+
+		const sessionLogs = logStorage.sessions.get(meta.sessionId);
+		if (sessionLogs[type]) {
+			sessionLogs[type].push(logEntry);
+			// Keep only the latest entries per session
+			if (sessionLogs[type].length > logStorage.maxLogEntries) {
+				sessionLogs[type] = sessionLogs[type].slice(-logStorage.maxLogEntries);
+			}
 		}
 	}
 };
 
-// Override logger to capture logs for API
+// Get logs for a specific session (combines system + session logs)
+const getLogsForSession = (sessionId, type, options = {}) => {
+	const systemLogs = logStorage.system[type] || [];
+	const sessionLogs = logStorage.sessions.get(sessionId)?.[type] || [];
+
+	// Combine and sort by timestamp
+	const combinedLogs = [...systemLogs, ...sessionLogs].sort(
+		(a, b) => new Date(a.timestamp) - new Date(b.timestamp)
+	);
+
+	// Apply filtering if provided
+	let filteredLogs = combinedLogs;
+
+	if (options.level) {
+		filteredLogs = filteredLogs.filter((log) => log.level === options.level);
+	}
+
+	if (options.since) {
+		const sinceDate = new Date(options.since);
+		filteredLogs = filteredLogs.filter(
+			(log) => new Date(log.timestamp) >= sinceDate
+		);
+	}
+
+	// Apply limit
+	const limitNum = Math.min(parseInt(options.limit || 25), 100);
+	return filteredLogs.slice(-limitNum);
+};
+
+// Session log cleanup utility
+const cleanupSessionLogs = (sessionIds) => {
+	if (!Array.isArray(sessionIds)) {
+		sessionIds = [sessionIds];
+	}
+
+	let cleanedCount = 0;
+	for (const sessionId of sessionIds) {
+		if (logStorage.sessions.has(sessionId)) {
+			logStorage.sessions.delete(sessionId);
+			cleanedCount++;
+		}
+	}
+
+	if (cleanedCount > 0) {
+		logger.info('Cleaned up session logs', {
+			cleanedSessions: cleanedCount,
+			remainingSessions: logStorage.sessions.size,
+		});
+	}
+
+	return cleanedCount;
+};
+
+// Export cleanup function for use by rate limiting middleware
+global.cleanupSessionLogs = cleanupSessionLogs;
+
+// Enhanced logger override to capture logs with session context
 const originalLoggerMethods = {};
 ['error', 'warn', 'info', 'debug'].forEach((level) => {
 	originalLoggerMethods[level] = logger[level].bind(logger);
 	logger[level] = (message, meta = {}) => {
 		// Call original logger
 		originalLoggerMethods[level](message, meta);
-		// Store in memory for API access
+
+		// Store in memory for API access with session context
 		addLogToStorage('backend', level, message, meta);
 	};
 });
 
-// Set up MCP log callback to capture MCP process logs
+// Session-aware logging helper for middleware/routes
+const createSessionLogger = (sessionId) => {
+	return {
+		error: (message, meta = {}) =>
+			logger.error(message, { ...meta, sessionId }),
+		warn: (message, meta = {}) => logger.warn(message, { ...meta, sessionId }),
+		info: (message, meta = {}) => logger.info(message, { ...meta, sessionId }),
+		debug: (message, meta = {}) =>
+			logger.debug(message, { ...meta, sessionId }),
+	};
+};
+
+// Set up MCP log callback to capture MCP process logs with session context
 setMcpLogCallback((level, message, meta) => {
 	addLogToStorage('mcp', level, message, meta);
 });
 
-// Backend logs endpoint
+// Backend logs endpoint - now session-isolated with system logs
 app.get('/api/logs/backend', accessControl, sessionTracker, (req, res) => {
 	const { limit = 25, level, since } = req.query; // Reduced default for demo/learning app
+	const sessionId = req.sessionId;
 
 	try {
-		let logs = logStorage.backend;
+		const logs = getLogsForSession(sessionId, 'backend', {
+			limit,
+			level,
+			since,
+		});
 
-		// Filter by log level if specified
-		if (level) {
-			logs = logs.filter((log) => log.level === level);
-		}
-
-		// Filter by timestamp if since parameter provided
-		if (since) {
-			const sinceDate = new Date(since);
-			logs = logs.filter((log) => new Date(log.timestamp) >= sinceDate);
-		}
-
-		// Limit results (max 100 for demo app)
-		const limitNum = Math.min(parseInt(limit), 100);
-		logs = logs.slice(-limitNum);
+		// Get counts for response metadata
+		const systemCount = logStorage.system.backend.length;
+		const sessionCount =
+			logStorage.sessions.get(sessionId)?.backend.length || 0;
 
 		res.json({
 			success: true,
 			logs,
 			count: logs.length,
-			totalStored: logStorage.backend.length,
-			filters: { level, since, limit: limitNum },
-			note: 'Default limit optimized for demo/learning purposes',
+			metadata: {
+				sessionId,
+				systemLogs: systemCount,
+				sessionLogs: sessionCount,
+				totalCombined: systemCount + sessionCount,
+			},
+			filters: { level, since, limit: Math.min(parseInt(limit), 100) },
+			note: 'Showing system logs + your session logs (privacy protected)',
 		});
 	} catch (error) {
-		logger.error('Backend logs endpoint error', { error: error.message });
+		const sessionLogger = createSessionLogger(sessionId);
+		sessionLogger.error('Backend logs endpoint error', {
+			error: error.message,
+		});
 		res.status(500).json({
 			error: 'Failed to retrieve backend logs',
 			code: 'LOGS_ERROR',
@@ -574,38 +717,34 @@ app.get('/api/logs/backend', accessControl, sessionTracker, (req, res) => {
 	}
 });
 
-// MCP logs endpoint
+// MCP logs endpoint - now session-isolated with system logs
 app.get('/api/logs/mcp', accessControl, sessionTracker, (req, res) => {
 	const { limit = 20, level, since } = req.query; // Reduced default for demo/learning app
+	const sessionId = req.sessionId;
 
 	try {
-		let logs = logStorage.mcp;
+		const logs = getLogsForSession(sessionId, 'mcp', { limit, level, since });
 
-		// Filter by log level if specified
-		if (level) {
-			logs = logs.filter((log) => log.level === level);
-		}
-
-		// Filter by timestamp if since parameter provided
-		if (since) {
-			const sinceDate = new Date(since);
-			logs = logs.filter((log) => new Date(log.timestamp) >= sinceDate);
-		}
-
-		// Limit results (max 100 for demo app)
-		const limitNum = Math.min(parseInt(limit), 100);
-		logs = logs.slice(-limitNum);
+		// Get counts for response metadata
+		const systemCount = logStorage.system.mcp.length;
+		const sessionCount = logStorage.sessions.get(sessionId)?.mcp.length || 0;
 
 		res.json({
 			success: true,
 			logs,
 			count: logs.length,
-			totalStored: logStorage.mcp.length,
-			filters: { level, since, limit: limitNum },
-			note: 'Default limit optimized for demo/learning purposes',
+			metadata: {
+				sessionId,
+				systemLogs: systemCount,
+				sessionLogs: sessionCount,
+				totalCombined: systemCount + sessionCount,
+			},
+			filters: { level, since, limit: Math.min(parseInt(limit), 100) },
+			note: 'Showing system MCP logs + your session MCP logs (privacy protected)',
 		});
 	} catch (error) {
-		logger.error('MCP logs endpoint error', { error: error.message });
+		const sessionLogger = createSessionLogger(sessionId);
+		sessionLogger.error('MCP logs endpoint error', { error: error.message });
 		res.status(500).json({
 			error: 'Failed to retrieve MCP logs',
 			code: 'LOGS_ERROR',
@@ -613,16 +752,20 @@ app.get('/api/logs/mcp', accessControl, sessionTracker, (req, res) => {
 	}
 });
 
-// General logs endpoint (legacy - returns info about new endpoints)
+// General logs endpoint (updated for session-isolated logging)
 app.get('/api/logs', accessControl, sessionTracker, (req, res) => {
+	const sessionId = req.sessionId;
+	const sessionLogs = logStorage.sessions.get(sessionId);
+
 	res.json({
-		message: 'Logs are now available via specific endpoints',
+		message: 'Session-isolated logging system with system log inclusion',
+		privacy: 'You can only see your own session logs + essential system logs',
 		endpoints: {
-			'/api/logs/backend': 'Backend server logs',
-			'/api/logs/mcp': 'MCP process logs',
+			'/api/logs/backend': 'Backend server logs (system + your session)',
+			'/api/logs/mcp': 'MCP process logs (system + your session)',
 		},
 		queryParameters: {
-			limit: 'Number of log entries to return (max 1000, default 100)',
+			limit: 'Number of log entries to return (max 100, default 25/20)',
 			level: 'Filter by log level (error, warn, info, debug)',
 			since: 'ISO timestamp to filter logs from (e.g., 2024-01-01T00:00:00Z)',
 		},
@@ -632,9 +775,17 @@ app.get('/api/logs', accessControl, sessionTracker, (req, res) => {
 			'Get logs since specific time':
 				'/api/logs/backend?since=2024-01-01T12:00:00Z',
 		},
-		totalLogsStored: {
-			backend: logStorage.backend.length,
-			mcp: logStorage.mcp.length,
+		sessionInfo: {
+			sessionId,
+			systemLogsStored: {
+				backend: logStorage.system.backend.length,
+				mcp: logStorage.system.mcp.length,
+			},
+			sessionLogsStored: {
+				backend: sessionLogs?.backend.length || 0,
+				mcp: sessionLogs?.mcp.length || 0,
+			},
+			totalActiveSessions: logStorage.sessions.size,
 		},
 	});
 });
