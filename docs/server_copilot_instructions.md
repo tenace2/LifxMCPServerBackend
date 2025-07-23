@@ -7,6 +7,8 @@ This is the **backend server** portion of a split LIFX-Claude smart light contro
 ### Original Project Context
 
 - **Source**: Migrated from https://github.com/tenace2/lifx-claude-vue
+- Note the LIFX MCP Server was sourced from James Furey:
+  https://mcp.so/server/lifx-api-mcp-server/furey
 - **Architecture**: Split from monolithic local dev app to production client-server architecture
 - **Purpose**: Secure backend for MCP (Model Context Protocol) integration with LIFX lights and Claude AI
 
@@ -418,6 +420,217 @@ const getMcpTools = () => [
 	// Add more MCP tools as needed
 ];
 ```
+
+## ✨ Enhanced MCP Server Features (v1.2.0)
+
+### Enhanced LIFX Tools for Better AI Chatbot Usability
+
+The MCP server has been significantly enhanced to improve AI chatbot interactions:
+
+#### 1. Enhanced Error Messages with Guidance
+
+```javascript
+// Enhanced error handling in set_light_state and set_color tools
+try {
+	const response = await lifxApi.put(`/lights/${selector}/state`, payload);
+	return response.data;
+} catch (error) {
+	if (
+		error.response?.status === 404 ||
+		error.message.includes('Could not find')
+	) {
+		// Provide helpful selector guidance
+		const lightsResponse = await lifxApi.get('/lights/all');
+		const lights = lightsResponse.data;
+		const availableGroups = [
+			...new Set(lights.map((light) => light.group?.name).filter(Boolean)),
+		];
+		const availableLabels = [
+			...new Set(lights.map((light) => light.label).filter(Boolean)),
+		];
+
+		throw new Error(
+			`Could not find light with selector "${selector}". ` +
+				`Available groups: [${availableGroups.join(', ')}]. ` +
+				`Available labels: [${availableLabels.join(', ')}]. ` +
+				`Try using "group:GroupName" or "label:LightLabel" format.`
+		);
+	}
+	throw error;
+}
+```
+
+#### 2. Enhanced list_lights with Selector Examples
+
+```javascript
+// Enhanced list_lights response for better AI guidance
+const lights = response.data.map((light) => ({
+	id: light.id,
+	label: light.label,
+	group: light.group,
+	// ... other properties
+}));
+
+// Extract unique groups and labels
+const availableGroups = [
+	...new Set(lights.map((light) => light.group?.name).filter(Boolean)),
+];
+const availableLabels = [
+	...new Set(lights.map((light) => light.label).filter(Boolean)),
+];
+
+// Create selector examples for common room names
+const selectorExamples = {};
+availableGroups.forEach((groupName) => {
+	const lowerName = groupName.toLowerCase();
+	selectorExamples[lowerName] = `group:${groupName}`;
+});
+
+return {
+	lights,
+	count: lights.length,
+	available_groups: availableGroups,
+	available_labels: availableLabels,
+	selector_examples: selectorExamples, // AI can use this mapping
+	selector_help: {
+		all_lights: 'all',
+		by_group: 'group:GroupName (e.g., group:Bedroom)',
+		by_label: 'label:LightLabel (e.g., label:Kitchen Light)',
+		by_id: 'id:lightId',
+	},
+};
+```
+
+#### 3. New resolve_selector Helper Tool
+
+```javascript
+// New tool for resolving ambiguous room names
+resolve_selector: async (params) => {
+	const { name } = params;
+	const response = await lifxApi.get('/lights/all');
+	const lights = response.data;
+
+	const availableGroups = [
+		...new Set(lights.map((light) => light.group?.name).filter(Boolean)),
+	];
+	const availableLabels = [
+		...new Set(lights.map((light) => light.label).filter(Boolean)),
+	];
+
+	const nameLower = name.toLowerCase();
+	const suggestions = [];
+
+	// Find matching groups and labels
+	const groupMatches = availableGroups.filter(
+		(group) =>
+			group.toLowerCase() === nameLower ||
+			group.toLowerCase().includes(nameLower)
+	);
+
+	groupMatches.forEach((group) => {
+		suggestions.push({
+			type: 'group',
+			selector: `group:${group}`,
+			display_name: group,
+			match_type: group.toLowerCase() === nameLower ? 'exact' : 'partial',
+		});
+	});
+
+	return {
+		query: name,
+		suggestions,
+		available_groups: availableGroups,
+		available_labels: availableLabels,
+		recommendation: suggestions.length > 0 ? suggestions[0].selector : null,
+	};
+};
+```
+
+#### 4. Fixed Multi-Step Tool Execution
+
+```javascript
+// Enhanced Claude API integration with conversation loop
+const callClaudeWithMcp = async (
+	claudeApiKey,
+	message,
+	mcpProcess,
+	options = {}
+) => {
+	const { systemPromptEnabled = true, maxTokens = 1000 } = options;
+
+	let conversation = buildClaudeRequest(
+		message,
+		systemPromptEnabled,
+		maxTokens
+	);
+	let totalTokensUsed = 0;
+
+	// Continue conversation until Claude indicates completion
+	while (true) {
+		const response = await anthropic.messages.create(conversation);
+		totalTokensUsed +=
+			response.usage.input_tokens + response.usage.output_tokens;
+
+		// Add Claude's response to conversation history
+		conversation.messages.push({
+			role: 'assistant',
+			content: response.content,
+		});
+
+		// Check if Claude wants to use tools
+		if (response.stop_reason === 'tool_use') {
+			// Process all tool calls and add results to conversation
+			const toolResults = [];
+
+			for (const content of response.content) {
+				if (content.type === 'tool_use') {
+					try {
+						const result = await callMcpMethod(
+							mcpProcess,
+							content.name,
+							content.input
+						);
+						toolResults.push({
+							type: 'tool_result',
+							tool_use_id: content.id,
+							content: JSON.stringify(result, null, 2),
+						});
+					} catch (error) {
+						toolResults.push({
+							type: 'tool_result',
+							tool_use_id: content.id,
+							content: `Error: ${error.message}`,
+							is_error: true,
+						});
+					}
+				}
+			}
+
+			// Add tool results to conversation and continue
+			conversation.messages.push({
+				role: 'user',
+				content: toolResults,
+			});
+
+			continue; // Continue the conversation loop
+		}
+
+		// Conversation complete
+		return {
+			response: response.content[0].text,
+			tokens_used: totalTokensUsed,
+			stop_reason: response.stop_reason,
+		};
+	}
+};
+```
+
+### Benefits of Enhanced Implementation
+
+1. **Better User Experience**: Users can say "bedroom" and the system figures out they mean "group:Bedroom"
+2. **Self-Healing Errors**: When selectors fail, users get actionable guidance
+3. **AI-Friendly**: The AI has all the information it needs to make smart decisions
+4. **Robust Conversation Flow**: Multi-step tool interactions work properly
 
 ## Railway Deployment
 

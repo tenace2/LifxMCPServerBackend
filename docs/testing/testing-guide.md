@@ -155,6 +155,173 @@ node demo-session-info.js
 - Rate limiting headers
 - Proper error handling examples
 
+## ✨ Testing Enhanced Features (v1.2.0)
+
+### 8. Enhanced MCP Server Testing
+
+**Purpose:** Test the new enhanced LIFX tools and selector resolution features
+
+**New Features to Test:**
+
+#### a) Enhanced Error Messages
+
+Test that selector errors now provide helpful guidance:
+
+```bash
+# Test with invalid selector to see enhanced error message
+curl -X POST http://localhost:3001/api/lifx/set_color \
+  -H "Content-Type: application/json" \
+  -H "x-demo-key: LifxDemo" \
+  -H "x-session-id: test-session" \
+  -d '{
+    "lifxApiKey": "your-lifx-token",
+    "selector": "invalidroom",
+    "color": "red"
+  }'
+```
+
+**Expected Enhanced Error:**
+
+```json
+{
+	"error": "Could not find light with selector 'invalidroom'. Available groups: [Bedroom, Kitchen, Office]. Available labels: [Table Lamp, Ceiling Light]. Try using 'group:GroupName' or 'label:LabelName' format."
+}
+```
+
+#### b) Resolve Selector Tool
+
+Test the new helper tool for ambiguous room names:
+
+```bash
+# Test resolve_selector with ambiguous name
+curl -X POST http://localhost:3001/api/lifx/resolve_selector \
+  -H "Content-Type: application/json" \
+  -H "x-demo-key: LifxDemo" \
+  -H "x-session-id: test-session" \
+  -d '{
+    "lifxApiKey": "your-lifx-token",
+    "name": "bedroom"
+  }'
+```
+
+**Expected Response:**
+
+```json
+{
+	"query": "bedroom",
+	"suggestions": [
+		{
+			"type": "group",
+			"selector": "group:Bedroom",
+			"display_name": "Bedroom",
+			"match_type": "exact"
+		}
+	],
+	"recommendation": "group:Bedroom",
+	"available_groups": ["Bedroom", "Kitchen", "Office"],
+	"available_labels": ["Table Lamp", "Ceiling Light"]
+}
+```
+
+#### c) Enhanced list_lights Response
+
+Test that list_lights now returns selector examples:
+
+```bash
+# Test enhanced list_lights response
+curl -X POST http://localhost:3001/api/lifx/list_lights \
+  -H "Content-Type: application/json" \
+  -H "x-demo-key: LifxDemo" \
+  -H "x-session-id: test-session" \
+  -d '{
+    "lifxApiKey": "your-lifx-token"
+  }'
+```
+
+**Look for these new fields in response:**
+
+```json
+{
+  "lights": [...],
+  "available_groups": ["Bedroom", "Kitchen", "Office"],
+  "available_labels": ["Table Lamp", "Ceiling Light"],
+  "selector_examples": {
+    "bedroom": "group:Bedroom",
+    "kitchen": "group:Kitchen",
+    "office": "group:Office"
+  },
+  "selector_help": {
+    "all_lights": "all",
+    "by_group": "group:GroupName (e.g., group:Bedroom)",
+    "by_label": "label:LightLabel (e.g., label:Kitchen Light)",
+    "by_id": "id:lightId (e.g., id:d073d58529b9)"
+  }
+}
+```
+
+#### d) Multi-Step Tool Execution
+
+Test the fixed conversation flow with Claude:
+
+```bash
+# Test multi-step conversation (should now work properly)
+curl -X POST http://localhost:3001/api/claude \
+  -H "Content-Type: application/json" \
+  -H "x-demo-key: LifxDemo" \
+  -H "x-session-id: test-session" \
+  -d '{
+    "claudeApiKey": "sk-ant-your-key",
+    "lifxApiKey": "your-lifx-token",
+    "message": "Change bedroom lights to blue"
+  }'
+```
+
+**Expected Behavior:**
+
+1. Claude should call `list_lights` to see available options
+2. Claude should then call `set_color` with proper selector
+3. Response should show successful light control
+4. No premature conversation ending
+
+#### e) Testing Script for Enhanced Features
+
+Create `test-enhanced-features.sh`:
+
+```bash
+#!/bin/bash
+
+# Test Enhanced LIFX MCP Server Features
+echo "🧪 Testing Enhanced LIFX MCP Server Features"
+
+CLAUDE_KEY="sk-ant-your-actual-key"
+LIFX_KEY="your-actual-lifx-token"
+SESSION_ID="enhanced-test-$(date +%s)"
+BASE_URL="http://localhost:3001"
+
+echo "📋 Testing resolve_selector tool..."
+curl -s -X POST "$BASE_URL/api/lifx/resolve_selector" \
+  -H "Content-Type: application/json" \
+  -H "x-demo-key: LifxDemo" \
+  -H "x-session-id: $SESSION_ID" \
+  -d "{\"lifxApiKey\": \"$LIFX_KEY\", \"name\": \"bedroom\"}" | jq .
+
+echo "📋 Testing enhanced list_lights..."
+curl -s -X POST "$BASE_URL/api/lifx/list_lights" \
+  -H "Content-Type: application/json" \
+  -H "x-demo-key: LifxDemo" \
+  -H "x-session-id: $SESSION_ID" \
+  -d "{\"lifxApiKey\": \"$LIFX_KEY\"}" | jq '.selector_examples'
+
+echo "📋 Testing enhanced error message..."
+curl -s -X POST "$BASE_URL/api/lifx/set_color" \
+  -H "Content-Type: application/json" \
+  -H "x-demo-key: LifxDemo" \
+  -H "x-session-id: $SESSION_ID" \
+  -d "{\"lifxApiKey\": \"$LIFX_KEY\", \"selector\": \"invalidroom\", \"color\": \"red\"}" | jq .
+
+echo "✅ Enhanced features testing complete!"
+```
+
 ## 📊 Monitoring
 
 ### 6. Usage Monitoring (`monitor-usage.sh`)

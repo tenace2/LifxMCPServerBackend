@@ -37,22 +37,34 @@ AVAILABLE CAPABILITIES:
 - cycle: Cycle lights through multiple color states
 - validate-color: Check if a color string is valid
 - clean: Control LIFX Clean devices
+- resolve_selector: Helper to resolve ambiguous room names (e.g., "bedroom" → "group:Bedroom")
 
 **How to Use Tools:**
 Always specify the 'tool' parameter first, then provide the appropriate parameters for that tool.
 
 Examples:
 - "Turn lights red" → tool: "set-state", color: "red", selector: "all"
+- "Turn bedroom lights red" → FIRST call list_lights, check selector_examples, THEN use correct selector
 - "Create breathing effect with blue and green" → tool: "breathe-effect", color: "blue", from_color: "green", cycles: 10
 - "Create infinite breathing effect" → tool: "breathe-effect", color: "red", from_color: "blue" (omit cycles parameter for infinite)
 - "Start a sunrise effect" → tool: "sunrise-effect", duration: 300 (5 minutes)
 - "List all my lights" → tool: "list-lights", selector: "all"
 - "Activate bedroom scene" → tool: "activate-scene", scene_uuid: "[uuid from list-scenes]"
 
+**Room Name Resolution Workflow:**
+1. User says "turn bedroom light red"
+2. Call list_lights to get selector_examples
+3. Check selector_examples: {"bedroom": "group:Bedroom"}
+4. Use selector: "group:Bedroom" (NOT "label:bedroom")
+5. If unsure, use resolve_selector tool: resolve_selector(name: "bedroom")
+
 **Important Guidelines:**
 - ALWAYS focus on the CURRENT user request - ignore previous conversation context if it conflicts
 - ALWAYS use the control_lifx_lights tool when users want to control lights
 - ALWAYS provide a friendly confirmation message after using the tool
+- CRITICAL: Report the ACTUAL results of your actions - if a tool fails, acknowledge the failure in your response
+- If a tool returns an error (like "Could not find group: Living Room"), explain this to the user clearly
+- Only claim success if the tools actually succeeded
 - For MULTI-STEP requests: Use multiple tool calls in a single response to accomplish all requested actions
 - For effects, suggest appropriate durations and parameters
 - For infinite effects (breathe, pulse, etc.), OMIT the 'cycles' parameter entirely - do not set it to "infinite"
@@ -65,11 +77,21 @@ Examples:
   1. tool: "set-state", color: "blue", selector: "all"
   2. tool: "breathe-effect", color: "green", from_color: "red", cycles: 5
 
-**Light Selectors:**
+**Light Selectors - SMART SELECTION RULES:**
+- ALWAYS call list_lights first to see available groups and labels
+- Use the selector_examples from list_lights response to map room names correctly
+- When user says "bedroom" and list_lights shows selector_examples: {"bedroom": "group:Bedroom"}, use "group:Bedroom"
+- When user says room names (bedroom, kitchen, etc.), FIRST try as group selector, THEN as label selector
 - "all" - All lights in account
-- "label:Kitchen" - Lights labeled "Kitchen" 
-- "group:Living Room" - Lights in "Living Room" group
+- "group:GroupName" - Lights in specific group (e.g., "group:Bedroom")
+- "label:LightLabel" - Lights with specific label (e.g., "label:Kitchen Light")
 - "id:d073d5..." - Specific light by ID
+
+**CRITICAL SELECTOR WORKFLOW:**
+1. When user mentions a room name (bedroom, kitchen, etc.), ALWAYS check list_lights first
+2. Look at the selector_examples in the response - use those exact mappings
+3. If selector_examples shows "bedroom": "group:Bedroom", use "group:Bedroom" not "label:bedroom"
+4. If a selector fails with "Could not find", the error will suggest correct options - use those suggestions
 
 **Color Formats:**
 - Named colors: "red", "blue", "green", "purple", "pink", "orange", "yellow", "white"
@@ -247,6 +269,22 @@ const getMcpTools = () => [
 			required: ['selector', 'color'],
 		},
 	},
+	{
+		name: 'resolve_selector',
+		description:
+			'Helper tool to resolve ambiguous room/light names to proper LIFX selectors',
+		input_schema: {
+			type: 'object',
+			properties: {
+				name: {
+					type: 'string',
+					description:
+						'The room or light name to resolve (e.g., "bedroom", "kitchen")',
+				},
+			},
+			required: ['name'],
+		},
+	},
 ];
 
 // Build Claude request
@@ -309,80 +347,173 @@ const callClaudeWithMcp = async (
 			messageLength: message.length,
 		});
 
-		const response = await anthropic.messages.create(request);
+		let response = await anthropic.messages.create(request);
+		let totalUsage = { ...response.usage };
+		let conversationMessages = [{ role: 'user', content: message }];
 
-		// Log Claude's text response
-		const textContent = response.content.find((c) => c.type === 'text');
-		if (textContent) {
-			logger.info('Claude response text', {
-				response: textContent.text,
-			});
-		}
+		// Continue the conversation until Claude is done (not making more tool calls)
+		while (response.stop_reason === 'tool_use') {
+			// Log Claude's text response
+			const textContent = response.content.find((c) => c.type === 'text');
+			if (textContent) {
+				logger.info('Claude response text', {
+					response: textContent.text,
+				});
+			}
 
-		// Process tool calls if any
-		if (response.content) {
-			for (const content of response.content) {
-				if (content.type === 'tool_use') {
-					try {
-						// Log the tool call details BEFORE execution
-						logger.info('Tool call details', {
-							toolName: content.name,
-							toolId: content.id,
-							parameters: content.input,
-						});
+			// Process tool calls if any
+			let hasToolErrors = false;
+			const toolResults = [];
 
-						logger.debug('Executing tool call', {
-							toolName: content.name,
-							toolId: content.id,
-						});
+			if (response.content) {
+				for (const content of response.content) {
+					if (content.type === 'tool_use') {
+						try {
+							// Log the tool call details BEFORE execution
+							logger.info('Tool call details', {
+								toolName: content.name,
+								toolId: content.id,
+								parameters: content.input,
+							});
 
-						// Import MCP manager here to avoid circular dependency
-						const { callMcpMethod } = require('./mcpManager');
-						const toolResult = await callMcpMethod(
-							mcpProcess,
-							content.name,
-							content.input
-						);
+							logger.debug('Executing tool call', {
+								toolName: content.name,
+								toolId: content.id,
+							});
 
-						// Add tool result to response
-						content.result = toolResult;
+							// Import MCP manager here to avoid circular dependency
+							const { callMcpMethod } = require('./mcpManager');
+							const toolResult = await callMcpMethod(
+								mcpProcess,
+								content.name,
+								content.input
+							);
 
-						// Log the successful result
-						logger.info('Tool call result', {
-							toolName: content.name,
-							toolId: content.id,
-							result: toolResult,
-						});
+							// Log the successful result
+							logger.info('Tool call result', {
+								toolName: content.name,
+								toolId: content.id,
+								result: toolResult,
+							});
 
-						logger.debug('Tool call completed', {
-							toolName: content.name,
-							toolId: content.id,
-							success: true,
-						});
-					} catch (toolError) {
-						logger.error('Tool call failed', {
-							toolName: content.name,
-							toolId: content.id,
-							parameters: content.input,
-							error: toolError.message,
-						});
+							logger.debug('Tool call completed', {
+								toolName: content.name,
+								toolId: content.id,
+								success: true,
+							});
 
-						content.error = toolError.message;
+							// Track successful tool result
+							toolResults.push({
+								tool_use_id: content.id,
+								type: 'tool_result',
+								content: JSON.stringify(toolResult),
+							});
+						} catch (toolError) {
+							logger.error('Tool call failed', {
+								toolName: content.name,
+								toolId: content.id,
+								parameters: content.input,
+								error: toolError.message,
+							});
+
+							hasToolErrors = true;
+
+							// Track error result for Claude
+							toolResults.push({
+								tool_use_id: content.id,
+								type: 'tool_result',
+								content: `Error: ${toolError.message}`,
+								is_error: true,
+							});
+						}
 					}
 				}
 			}
+
+			// Add the assistant's response to conversation
+			const cleanContent = response.content.map((content) => {
+				if (content.type === 'tool_use') {
+					return {
+						type: content.type,
+						id: content.id,
+						name: content.name,
+						input: content.input,
+					};
+				}
+				return content;
+			});
+
+			conversationMessages.push({
+				role: 'assistant',
+				content: cleanContent,
+			});
+
+			// Add tool results to conversation
+			if (toolResults.length > 0) {
+				conversationMessages.push({
+					role: 'user',
+					content: toolResults,
+				});
+
+				const hasErrors = toolResults.some((r) => r.is_error);
+
+				logger.info(
+					hasErrors
+						? 'Tool errors detected, getting corrected response from Claude'
+						: 'Sending tool results to Claude for complete response',
+					{
+						errorCount: toolResults.filter((r) => r.is_error).length,
+						successCount: toolResults.filter((r) => !r.is_error).length,
+						totalTools: toolResults.length,
+					}
+				);
+
+				// Get Claude's next response with tool results
+				const nextRequest = {
+					model: request.model,
+					max_tokens: request.max_tokens,
+					messages: conversationMessages,
+					tools: request.tools,
+					system: request.system,
+				};
+
+				logger.debug('Requesting next response from Claude with tool results');
+				response = await anthropic.messages.create(nextRequest);
+
+				// Accumulate usage
+				totalUsage.input_tokens += response.usage.input_tokens;
+				totalUsage.output_tokens += response.usage.output_tokens;
+
+				logger.info('Received updated response from Claude', {
+					hadToolErrors: hasErrors,
+					responseLength: response.content?.[0]?.text?.length || 0,
+					stopReason: response.stop_reason,
+					totalUsage: totalUsage,
+				});
+			} else {
+				// No tool results, exit the loop
+				break;
+			}
+		}
+
+		// Log Claude's final text response
+		const finalTextContent = response.content.find((c) => c.type === 'text');
+		if (finalTextContent) {
+			logger.info('Claude final response text', {
+				response: finalTextContent.text,
+			});
 		}
 
 		logger.info('Claude API call successful', {
-			inputTokens: response.usage?.input_tokens,
-			outputTokens: response.usage?.output_tokens,
+			inputTokens: totalUsage.input_tokens,
+			outputTokens: totalUsage.output_tokens,
 			stopReason: response.stop_reason,
 		});
 
 		return {
 			success: true,
 			response: response,
-			usage: response.usage,
+			usage: totalUsage,
 		};
 	} catch (error) {
 		logger.error('Claude API call failed', {

@@ -32,6 +32,183 @@ The LIFX MCP Server Backend provides the following endpoints:
 - Production: `https://your-server-domain.com`
 - Development: `http://localhost:3001`
 
+## Enhanced LIFX API Tools
+
+The MCP server includes enhanced tools designed for improved AI chatbot usability with smart error handling and selector guidance.
+
+### Core LIFX Tools
+
+#### `list_lights` - Enhanced Light Discovery
+
+Returns lights with enhanced metadata for better AI chatbot integration:
+
+```javascript
+// Request
+const response = await client.listLights(lifxApiKey, 'all');
+
+// Enhanced Response
+{
+  "lights": [...],
+  "count": 4,
+  "available_groups": ["Bedroom", "Kitchen", "Office"],
+  "available_labels": ["Table Lamp", "Ceiling Light"],
+  "selector_examples": {
+    "bedroom": "group:Bedroom",
+    "kitchen": "group:Kitchen",
+    "office": "group:Office"
+  },
+  "selector_help": {
+    "all_lights": "all",
+    "by_group": "group:GroupName (e.g., group:Bedroom)",
+    "by_label": "label:LightLabel (e.g., label:Kitchen Light)",
+    "by_id": "id:lightId (e.g., id:d073d58529b9)"
+  }
+}
+```
+
+#### `resolve_selector` - **NEW** Smart Selector Resolution
+
+Resolves ambiguous room names to proper LIFX selectors:
+
+```javascript
+// Request
+const response = await client.resolveSelector(lifxApiKey, 'bedroom');
+
+// Response
+{
+  "query": "bedroom",
+  "suggestions": [
+    {
+      "type": "group",
+      "selector": "group:Bedroom",
+      "display_name": "Bedroom",
+      "match_type": "exact"
+    }
+  ],
+  "recommendation": "group:Bedroom",
+  "available_groups": ["Bedroom", "Kitchen", "Office"],
+  "available_labels": ["Table Lamp", "Ceiling Light"],
+  "help": null // Only present if no matches found
+}
+```
+
+#### `set_light_state` - Enhanced State Control
+
+Control power, color, and brightness with smart error messages:
+
+```javascript
+// Success
+const response = await client.setLightState(lifxApiKey, 'group:Bedroom', {
+  power: 'on',
+  color: 'blue',
+  brightness: 0.8,
+  duration: 2.0
+});
+
+// Enhanced Error Response (for invalid selector)
+{
+  "error": "Could not find light with selector 'livingroom'. Available groups: [Bedroom, Kitchen, Office]. Available labels: [Table Lamp, Ceiling Light]. Try using 'group:GroupName' or 'label:LightLabel' format."
+}
+```
+
+#### `set_color` - Enhanced Color Control
+
+Set color with enhanced error handling:
+
+```javascript
+const response = await client.setColor(lifxApiKey, 'group:Bedroom', 'red', 1.5);
+```
+
+#### Other Enhanced Tools:
+
+- **`set_brightness`** - Set brightness with validation
+- **`toggle_lights`** - Toggle lights on/off
+- **`breathe_effect`** - Apply breathing effect with customizable parameters
+- **`pulse_effect`** - Apply pulse effect with customizable parameters
+
+### Enhanced Error Handling Examples
+
+**Before Enhancement:**
+
+```javascript
+// Old error (not helpful)
+{ "error": "Could not find light with selector 'bedroom'" }
+```
+
+**After Enhancement:**
+
+```javascript
+// New error (actionable guidance)
+{
+  "error": "Could not find light with selector 'bedroom'. Available groups: [Bedroom, Kitchen, Office]. Available labels: [Table Lamp, Ceiling Light]. Try using 'group:GroupName' or 'label:LightLabel' format."
+}
+```
+
+### Client Usage Examples
+
+#### Smart Room Name Resolution
+
+```javascript
+// Handle ambiguous room names gracefully
+async function setRoomColor(client, lifxApiKey, roomName, color) {
+	try {
+		// Try direct usage first
+		await client.setColor(lifxApiKey, `group:${roomName}`, color);
+	} catch (error) {
+		if (error.message.includes('Could not find light')) {
+			// Use resolve_selector to find the correct selector
+			const resolution = await client.resolveSelector(
+				lifxApiKey,
+				roomName.toLowerCase()
+			);
+
+			if (resolution.recommendation) {
+				await client.setColor(lifxApiKey, resolution.recommendation, color);
+				console.log(`Used ${resolution.recommendation} for ${roomName}`);
+			} else {
+				throw new Error(
+					`No lights found matching "${roomName}". Available: ${resolution.available_groups.join(
+						', '
+					)}`
+				);
+			}
+		} else {
+			throw error;
+		}
+	}
+}
+
+// Usage
+await setRoomColor(client, lifxApiKey, 'bedroom', 'blue'); // Works with 'bedroom' or 'Bedroom'
+```
+
+#### Enhanced Light Discovery for UI
+
+```javascript
+// Build dynamic UI based on available lights
+async function buildLightSelector(client, lifxApiKey) {
+	const response = await client.listLights(lifxApiKey);
+
+	const groupOptions = response.available_groups.map((group) => ({
+		value: `group:${group}`,
+		label: `${group} (Group)`,
+		type: 'group',
+	}));
+
+	const labelOptions = response.available_labels.map((label) => ({
+		value: `label:${label}`,
+		label: `${label} (Individual)`,
+		type: 'label',
+	}));
+
+	return [
+		{ value: 'all', label: 'All Lights', type: 'all' },
+		...groupOptions,
+		...labelOptions,
+	];
+}
+```
+
 ## Authentication & Session Management
 
 ### Required Headers
@@ -475,6 +652,61 @@ class LifxMcpClient {
 				lifxApiKey,
 				...params,
 			}),
+		});
+	}
+
+	// Enhanced LIFX helper methods for better client usability
+	async listLights(lifxApiKey, selector = 'all') {
+		return await this.controlLifx('list_lights', lifxApiKey, { selector });
+	}
+
+	async setLightState(lifxApiKey, selector, options = {}) {
+		return await this.controlLifx('set_light_state', lifxApiKey, {
+			selector,
+			...options, // power, color, brightness, duration
+		});
+	}
+
+	async setColor(lifxApiKey, selector, color, duration = 1.0) {
+		return await this.controlLifx('set_color', lifxApiKey, {
+			selector,
+			color,
+			duration,
+		});
+	}
+
+	async setBrightness(lifxApiKey, selector, brightness, duration = 1.0) {
+		return await this.controlLifx('set_brightness', lifxApiKey, {
+			selector,
+			brightness,
+			duration,
+		});
+	}
+
+	async toggleLights(lifxApiKey, selector, duration = 1.0) {
+		return await this.controlLifx('toggle_lights', lifxApiKey, {
+			selector,
+			duration,
+		});
+	}
+
+	async resolveSelector(lifxApiKey, name) {
+		return await this.controlLifx('resolve_selector', lifxApiKey, { name });
+	}
+
+	async breatheEffect(lifxApiKey, selector, color, options = {}) {
+		return await this.controlLifx('breathe_effect', lifxApiKey, {
+			selector,
+			color,
+			...options, // from_color, period, cycles, persist
+		});
+	}
+
+	async pulseEffect(lifxApiKey, selector, color, options = {}) {
+		return await this.controlLifx('pulse_effect', lifxApiKey, {
+			selector,
+			color,
+			...options, // from_color, period, cycles, persist
 		});
 	}
 

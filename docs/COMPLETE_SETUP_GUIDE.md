@@ -4,6 +4,20 @@
 
 This guide will help you deploy your backend server to Railway and connect it with your frontend on GitHub Pages. **No experience with client-server apps required!**
 
+## ✨ Latest Enhancements (v1.2.0)
+
+Your backend now includes **Enhanced AI Chatbot Features**:
+
+- **Smart Selector Resolution**: AI can handle "bedroom" → "group:Bedroom" automatically
+- **Enhanced Error Messages**: Clear guidance when light selectors don't work
+- **Multi-Step Tool Execution**: Fixed conversation flow for complex commands
+- **Resolve Selector Tool**: New helper tool for ambiguous room names
+
+**User Experience Improvements:**
+
+- **Before**: "Could not find light with selector 'bedroom'" ❌
+- **After**: "Using 'group:Bedroom' for 'bedroom'. Successfully changed 2 lights to blue" ✅
+
 ## 📋 Prerequisites
 
 - Claude API key (from Anthropic)

@@ -6,6 +6,9 @@ Note this project was developed using Copilot AI agent Claude Sonnet 4.
 Please review the server_copilot_instructions.md document to obtain an
 overview of the guidelines the AI agent used when developing this project.
 
+The LIFX MCP Server code was from project by James Furey link here:
+https://mcp.so/server/lifx-api-mcp-server/furey
+
 ## 🏗️ Architecture
 
 ```
@@ -56,6 +59,36 @@ GitHub Pages Client → Railway HTTP API → MCP Server → LIFX API
    ```bash
    curl http://localhost:3001/health
    ```
+
+## ✨ Recent Enhancements
+
+### Enhanced MCP Server (v1.2.0)
+
+**Improved AI Chatbot Usability:**
+
+- **Smart Selector Resolution**: New `resolve_selector` tool helps AI resolve ambiguous room names like "bedroom" → "group:Bedroom"
+- **Enhanced Error Messages**: When selectors fail, the system now provides available groups and labels for better error recovery
+- **Detailed Tool Schemas**: Comprehensive documentation in tool schemas helps AI understand proper selector usage
+- **Selector Examples**: The `list_lights` tool now returns `selector_examples` mapping common room names to proper selectors
+
+**Fixed Conversation Flow:**
+
+- **Multi-Step Tool Execution**: Fixed Claude API integration to properly handle multi-step conversations (list_lights → analyze → execute commands)
+- **Tool Execution Loop**: Implemented proper conversation loop that continues until Claude completes its intended workflow
+
+**Example of Enhanced User Experience:**
+
+```
+User: "Turn the bedroom lights blue"
+1. AI calls resolve_selector with "bedroom" → gets "group:Bedroom"
+2. AI calls set_color with proper selector "group:Bedroom"
+3. Lights change successfully with helpful feedback
+```
+
+**Before vs After:**
+
+- **Before**: "Could not find light with selector 'bedroom'" (user confusion)
+- **After**: "Using 'group:Bedroom' for 'bedroom'. Successfully set 2 lights to blue" (clear guidance)
 
 ## 🔐 Security Features
 
@@ -125,6 +158,30 @@ x-session-id: your-session-id
 }
 ```
 
+### Enhanced LIFX Tools
+
+The MCP server now includes enhanced tools with improved AI chatbot usability:
+
+#### Core Tools:
+
+- **`list_lights`** - Returns lights with `selector_examples` mapping (e.g., `{"bedroom": "group:Bedroom"}`)
+- **`set_light_state`** - Enhanced with smart error messages showing available groups/labels
+- **`set_color`** - Improved error handling with selector suggestions
+- **`resolve_selector`** - **NEW**: Resolves ambiguous names like "bedroom" to proper selectors
+
+#### Effect Tools:
+
+- **`breathe_effect`** - Smooth breathing effect
+- **`pulse_effect`** - Quick flashing effect
+
+#### Example Enhanced Error Handling:
+
+```json
+{
+	"error": "Could not find light with selector 'livingroom'. Available groups: [Bedroom, Kitchen, Office]. Available labels: [Table Lamp, Ceiling Light]. Try using 'group:GroupName' format."
+}
+```
+
 ### System Prompt Modes
 
 The `systemPromptEnabled` parameter controls Claude's conversation scope:
@@ -133,16 +190,6 @@ The `systemPromptEnabled` parameter controls Claude's conversation scope:
 - **`false`**: General mode - Claude answers any question + maintains LIFX awareness
 
 Both modes always include LIFX capabilities. See [client implementation guide](docs/client-implementation-guide.md) for details.
-
-Available actions:
-
-- `list_lights` - Get available lights
-- `set_light_state` - Control power, color, brightness
-- `toggle_lights` - Toggle lights on/off
-- `set_brightness` - Set brightness only
-- `set_color` - Set color only
-- `breathe_effect` - Apply breathing effect
-- `pulse_effect` - Apply pulse effect
 
 ## 🌍 Railway Deployment
 
@@ -356,6 +403,40 @@ curl -X POST https://your-app.railway.app/api/claude \
     "lifxApiKey": "your-token",
     "message": "Make the lights green"
   }'
+```
+
+### Enhanced Selector Resolution
+
+Use the new `resolve_selector` tool to handle ambiguous room names:
+
+```bash
+curl -X POST https://your-app.railway.app/api/lifx/resolve_selector \
+  -H "Content-Type: application/json" \
+  -H "x-demo-key: LifxDemo" \
+  -H "x-session-id: session123" \
+  -d '{
+    "lifxApiKey": "your-token",
+    "name": "bedroom"
+  }'
+```
+
+**Response:**
+
+```json
+{
+	"query": "bedroom",
+	"suggestions": [
+		{
+			"type": "group",
+			"selector": "group:Bedroom",
+			"display_name": "Bedroom",
+			"match_type": "exact"
+		}
+	],
+	"recommendation": "group:Bedroom",
+	"available_groups": ["Bedroom", "Kitchen", "Office"],
+	"available_labels": ["Table Lamp", "Ceiling Light"]
+}
 ```
 
 ## 🐛 Troubleshooting
