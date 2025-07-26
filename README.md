@@ -9,6 +9,29 @@ overview of the guidelines the AI agent used when developing this project.
 The LIFX MCP Server code was from project by James Furey link here:
 https://mcp.so/server/lifx-api-mcp-server/furey
 
+## CRUCIAL NOTE - only works with my front end client!
+
+This sever is one of my first attempts to deploy to Railway, and does not
+have any Railway environment variables set up on Railway to flexibly handle
+other ALLOWED_ORIGINS.
+
+My client app is available at:
+https://tenace2.github.io/LifxFrontEnd/
+
+If you create your own front end client for this server you can alter the CORS
+section of this code in the `mcp-server-manager.js` code at about line 60, a snippet
+is previded below. As you can see this server is very restricted.
+
+```
+// CORS configuration
+const corsOptions = {
+	origin: process.env.ALLOWED_ORIGINS?.split(',') || [
+		'https://tenace2.github.io',
+		'http://localhost:9003',
+		'http://localhost:5173', // Added for local client testing
+	],
+```
+
 ## 🏗️ Architecture
 
 ```
@@ -229,22 +252,32 @@ ALLOWED_ORIGINS=https://tenace2.github.io
 
 ```
 LifxMCPServerBackend/
-├── mcp-server-manager.js           # Main HTTP API server
-├── lifx-api-mcp-server.js          # MCP server (child process)
+├── CHANGELOG.md                    # Version history and enhancements
+├── README.md                       # This documentation
 ├── package.json                    # Dependencies and scripts
 ├── railway.json                    # Railway deployment config
-├── README.md                       # This documentation
 ├── .env.example                    # Environment variables template
-├── server_copilot_instructions.md  # AI assistant instructions
-├── curl-commands-manual.md         # Manual API testing commands
+├── mcp-server-manager.js           # Main HTTP API server
+├── lifx-api-mcp-server.js          # MCP server (child process)
 ├── demo-session-info.js            # Demo session utilities
-├── test-*.js                       # Various test scripts
-├── *.sh                           # Shell scripts for testing/monitoring
+├── monitor-usage.sh               # Server usage monitoring script
 ├── docs/                          # Documentation
 │   ├── COMPLETE_SETUP_GUIDE.md    # Comprehensive setup guide
+│   ├── MULTI_USER_IMPLEMENTATION.md # Multi-user session guide
+│   ├── SESSION_ISOLATED_LOGGING.md # Logging implementation details
 │   ├── client-implementation-guide.md # Client integration guide
-│   ├── client-integration-example.js  # Example client code
-│   └── system-prompt-investigation.md # System prompt analysis
+│   ├── server_copilot_instructions.md # AI assistant instructions
+│   └── testing/                   # Testing documentation and scripts
+│       ├── testing-guide.md       # Complete testing guide
+│       ├── curl-commands-manual.md # Manual API testing commands
+│       ├── simple-test.sh         # Basic functionality test
+│       ├── quick-comparison-test.sh # System prompt comparison test
+│       ├── test-claude-curl.sh    # Claude API testing with curl
+│       ├── test-deployment.js     # Railway deployment testing
+│       ├── test-mcp-direct.js     # Direct MCP server testing
+│       ├── test-multi-user.js     # Multi-user functionality test
+│       ├── test-system-prompt.js  # System prompt behavior test
+│       └── test-system-prompt-minimal.js # Minimal system prompt test
 ├── middleware/                     # Express middleware
 │   ├── auth.js                    # Access control
 │   ├── rateLimit.js               # Rate limiting logic
