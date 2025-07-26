@@ -305,7 +305,7 @@ app.post(
 				claudeApiKey,
 				message,
 				mcpProcess,
-				{ systemPromptEnabled, maxTokens }
+				{ systemPromptEnabled, maxTokens, sessionId: req.sessionId }
 			);
 
 			sessionLogger.info('Claude chat completed', {

@@ -325,7 +325,23 @@ const callClaudeWithMcp = async (
 	mcpProcess,
 	options = {}
 ) => {
-	const { systemPromptEnabled = true, maxTokens = 1000 } = options;
+	const { systemPromptEnabled = true, maxTokens = 1000, sessionId } = options;
+
+	// Create session-aware logger
+	const createSessionLogger = (sessionId) => {
+		return {
+			error: (message, meta = {}) =>
+				logger.error(message, { ...meta, sessionId }),
+			warn: (message, meta = {}) =>
+				logger.warn(message, { ...meta, sessionId }),
+			info: (message, meta = {}) =>
+				logger.info(message, { ...meta, sessionId }),
+			debug: (message, meta = {}) =>
+				logger.debug(message, { ...meta, sessionId }),
+		};
+	};
+
+	const sessionLogger = sessionId ? createSessionLogger(sessionId) : logger;
 
 	try {
 		const anthropic = new Anthropic({
@@ -335,12 +351,12 @@ const callClaudeWithMcp = async (
 		const request = buildClaudeRequest(message, systemPromptEnabled, maxTokens);
 
 		// Log the user's message
-		logger.info('User message received', {
+		sessionLogger.info('User message received', {
 			message: message,
 			messageLength: message.length,
 		});
 
-		logger.debug('Calling Claude API', {
+		sessionLogger.debug('Calling Claude API', {
 			model: request.model,
 			maxTokens: request.max_tokens,
 			toolCount: request.tools.length,
@@ -356,7 +372,7 @@ const callClaudeWithMcp = async (
 			// Log Claude's text response
 			const textContent = response.content.find((c) => c.type === 'text');
 			if (textContent) {
-				logger.info('Claude response text', {
+				sessionLogger.info('Claude response text', {
 					response: textContent.text,
 				});
 			}
@@ -370,13 +386,13 @@ const callClaudeWithMcp = async (
 					if (content.type === 'tool_use') {
 						try {
 							// Log the tool call details BEFORE execution
-							logger.info('Tool call details', {
+							sessionLogger.info('Tool call details', {
 								toolName: content.name,
 								toolId: content.id,
 								parameters: content.input,
 							});
 
-							logger.debug('Executing tool call', {
+							sessionLogger.debug('Executing tool call', {
 								toolName: content.name,
 								toolId: content.id,
 							});
@@ -390,13 +406,13 @@ const callClaudeWithMcp = async (
 							);
 
 							// Log the successful result
-							logger.info('Tool call result', {
+							sessionLogger.info('Tool call result', {
 								toolName: content.name,
 								toolId: content.id,
 								result: toolResult,
 							});
 
-							logger.debug('Tool call completed', {
+							sessionLogger.debug('Tool call completed', {
 								toolName: content.name,
 								toolId: content.id,
 								success: true,
@@ -409,7 +425,7 @@ const callClaudeWithMcp = async (
 								content: JSON.stringify(toolResult),
 							});
 						} catch (toolError) {
-							logger.error('Tool call failed', {
+							sessionLogger.error('Tool call failed', {
 								toolName: content.name,
 								toolId: content.id,
 								parameters: content.input,
@@ -457,7 +473,7 @@ const callClaudeWithMcp = async (
 
 				const hasErrors = toolResults.some((r) => r.is_error);
 
-				logger.info(
+				sessionLogger.info(
 					hasErrors
 						? 'Tool errors detected, getting corrected response from Claude'
 						: 'Sending tool results to Claude for complete response',
@@ -477,14 +493,16 @@ const callClaudeWithMcp = async (
 					system: request.system,
 				};
 
-				logger.debug('Requesting next response from Claude with tool results');
+				sessionLogger.debug(
+					'Requesting next response from Claude with tool results'
+				);
 				response = await anthropic.messages.create(nextRequest);
 
 				// Accumulate usage
 				totalUsage.input_tokens += response.usage.input_tokens;
 				totalUsage.output_tokens += response.usage.output_tokens;
 
-				logger.info('Received updated response from Claude', {
+				sessionLogger.info('Received updated response from Claude', {
 					hadToolErrors: hasErrors,
 					responseLength: response.content?.[0]?.text?.length || 0,
 					stopReason: response.stop_reason,
@@ -499,12 +517,12 @@ const callClaudeWithMcp = async (
 		// Log Claude's final text response
 		const finalTextContent = response.content.find((c) => c.type === 'text');
 		if (finalTextContent) {
-			logger.info('Claude final response text', {
+			sessionLogger.info('Claude final response text', {
 				response: finalTextContent.text,
 			});
 		}
 
-		logger.info('Claude API call successful', {
+		sessionLogger.info('Claude API call successful', {
 			inputTokens: totalUsage.input_tokens,
 			outputTokens: totalUsage.output_tokens,
 			stopReason: response.stop_reason,
@@ -516,7 +534,7 @@ const callClaudeWithMcp = async (
 			usage: totalUsage,
 		};
 	} catch (error) {
-		logger.error('Claude API call failed', {
+		sessionLogger.error('Claude API call failed', {
 			userMessage: message,
 			error: error.message,
 			type: error.constructor.name,
