@@ -61,7 +61,10 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 		// Handle spawn errors
 		mcpProcess.on('error', (error) => {
 			clearTimeout(timeout);
-			logger.error('MCP server spawn error', { error: error.message });
+			logger.error('MCP server spawn error', {
+				error: error.message,
+				sessionId,
+			});
 			reject(error);
 		});
 
@@ -69,7 +72,12 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 		mcpProcess.on('exit', (code, signal) => {
 			const exitMessage = `MCP server exited with code ${code}, signal ${signal}`;
 			if (code !== 0) {
-				logger.warn(exitMessage, { code, signal, pid: mcpProcess.pid });
+				logger.warn(exitMessage, {
+					code,
+					signal,
+					pid: mcpProcess.pid,
+					sessionId,
+				});
 				captureMcpLog('warn', exitMessage, {
 					code,
 					signal,
@@ -77,7 +85,12 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 					sessionId,
 				});
 			} else {
-				logger.debug(exitMessage, { code, signal, pid: mcpProcess.pid });
+				logger.debug(exitMessage, {
+					code,
+					signal,
+					pid: mcpProcess.pid,
+					sessionId,
+				});
 				captureMcpLog('debug', exitMessage, {
 					code,
 					signal,
@@ -91,7 +104,11 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 		mcpProcess.stdout.on('data', (data) => {
 			const output = data.toString().trim();
 			if (output) {
-				logger.debug('MCP server stdout', { output, pid: mcpProcess.pid });
+				logger.debug('MCP server stdout', {
+					output,
+					pid: mcpProcess.pid,
+					sessionId,
+				});
 				captureMcpLog('info', 'MCP stdout', {
 					output,
 					pid: mcpProcess.pid,
@@ -104,7 +121,11 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 		mcpProcess.stderr.on('data', (data) => {
 			const error = data.toString().trim();
 			if (error) {
-				logger.warn('MCP server stderr', { error, pid: mcpProcess.pid });
+				logger.warn('MCP server stderr', {
+					error,
+					pid: mcpProcess.pid,
+					sessionId,
+				});
 				captureMcpLog('error', 'MCP stderr', {
 					error,
 					pid: mcpProcess.pid,
@@ -116,7 +137,12 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 };
 
 // Call MCP method via JSON-RPC
-const callMcpMethod = async (mcpProcess, method, params = {}) => {
+const callMcpMethod = async (
+	mcpProcess,
+	method,
+	params = {},
+	sessionId = null
+) => {
 	return new Promise((resolve, reject) => {
 		const requestId = `req_${Date.now()}_${Math.random()
 			.toString(36)
@@ -155,6 +181,7 @@ const callMcpMethod = async (mcpProcess, method, params = {}) => {
 								method,
 								error: response.error,
 								requestId,
+								sessionId,
 							});
 							reject(new Error(response.error.message || 'MCP method error'));
 						} else {
@@ -162,6 +189,7 @@ const callMcpMethod = async (mcpProcess, method, params = {}) => {
 								method,
 								requestId,
 								resultType: typeof response.result,
+								sessionId,
 							});
 							resolve(response.result);
 						}
@@ -184,6 +212,7 @@ const callMcpMethod = async (mcpProcess, method, params = {}) => {
 				method,
 				requestId,
 				timeout: MCP_METHOD_TIMEOUT,
+				sessionId,
 			});
 			reject(new Error('MCP method call timeout'));
 		}, MCP_METHOD_TIMEOUT);
@@ -194,7 +223,7 @@ const callMcpMethod = async (mcpProcess, method, params = {}) => {
 		// Send request
 		try {
 			mcpProcess.stdin.write(JSON.stringify(request) + '\n');
-			logger.debug('MCP method request sent', { method, requestId });
+			logger.debug('MCP method request sent', { method, requestId, sessionId });
 		} catch (error) {
 			clearTimeout(timeoutHandle);
 			mcpProcess.stdout.off('data', responseHandler);
@@ -202,6 +231,7 @@ const callMcpMethod = async (mcpProcess, method, params = {}) => {
 				method,
 				error: error.message,
 				requestId,
+				sessionId,
 			});
 			reject(error);
 		}
@@ -209,7 +239,7 @@ const callMcpMethod = async (mcpProcess, method, params = {}) => {
 };
 
 // Initialize MCP server (call this to verify connection)
-const initializeMcpServer = async (mcpProcess) => {
+const initializeMcpServer = async (mcpProcess, sessionId = null) => {
 	try {
 		// Send initialize request
 		const initRequest = {
@@ -245,7 +275,7 @@ const initializeMcpServer = async (mcpProcess) => {
 						if (response.error) {
 							reject(new Error(response.error.message));
 						} else {
-							logger.debug('MCP server initialized');
+							logger.debug('MCP server initialized', { sessionId });
 							resolve(response.result);
 						}
 					}
@@ -262,13 +292,16 @@ const initializeMcpServer = async (mcpProcess) => {
 			}, 5000);
 		});
 	} catch (error) {
-		logger.error('MCP initialization failed', { error: error.message });
+		logger.error('MCP initialization failed', {
+			error: error.message,
+			sessionId,
+		});
 		throw error;
 	}
 };
 
 // Clean up MCP process
-const cleanupMcpProcess = (mcpProcess) => {
+const cleanupMcpProcess = (mcpProcess, sessionId = null) => {
 	if (mcpProcess && !mcpProcess.killed) {
 		try {
 			mcpProcess.kill('SIGTERM');
@@ -277,13 +310,16 @@ const cleanupMcpProcess = (mcpProcess) => {
 			setTimeout(() => {
 				if (!mcpProcess.killed) {
 					mcpProcess.kill('SIGKILL');
-					logger.warn('Force killed MCP process');
+					logger.warn('Force killed MCP process', { sessionId });
 				}
 			}, 5000);
 
-			logger.debug('MCP process cleanup initiated');
+			logger.debug('MCP process cleanup initiated', { sessionId });
 		} catch (error) {
-			logger.error('Error cleaning up MCP process', { error: error.message });
+			logger.error('Error cleaning up MCP process', {
+				error: error.message,
+				sessionId,
+			});
 		}
 	}
 };

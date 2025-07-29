@@ -85,16 +85,24 @@ GitHub Pages Client → Railway HTTP API → MCP Server → LIFX API
 
 ## ⚡ Latest Updates
 
-### Session Privacy Fix (v1.2.1) - July 29, 2025
+### Complete Session Privacy Fix (v1.2.1) - July 29, 2025
 
-**🔒 Critical Privacy Enhancement:**
+**🔒 Critical Privacy Enhancement - FULLY RESOLVED:**
 
-- **Fixed session log isolation** - Users can no longer see other users' MCP process activity
-- **Complete privacy protection** - LIFX command results now stay within originating sessions
-- **Enhanced multi-user security** - Proper session boundaries for Railway deployment
+- **Fixed complete session log isolation** - Users can no longer see ANY other users' MCP process activity
+- **Resolved dual logging issue** - Both winston logger and MCP callback systems now properly session-isolated
+- **Complete privacy protection** - ALL LIFX command results now stay within originating sessions
+- **Enhanced multi-user security** - Perfect session boundaries for Railway deployment
+- **Comprehensive fix** - All MCP lifecycle events (spawn, methods, cleanup) properly isolated
 - **Backward compatible** - No client changes required, improved privacy automatically applied
 
-This fix resolves a critical issue where MCP stdout logs (including "Successfully updated X lights" messages) were being shared across sessions, potentially exposing user activity to other concurrent users.
+**Technical Details:**
+This fix resolves a critical issue where BOTH logging systems were sharing data across sessions:
+
+1. **Winston logger calls** (like `logger.debug()`) were missing sessionId → created "system" logs visible to all
+2. **MCP callback calls** (like `captureMcpLog()`) had sessionId → properly isolated
+
+Both systems now include sessionId, ensuring complete session isolation and eliminating the cross-session leakage where users could see other users' "Successfully updated X lights" messages and MCP activity.
 
 ## ✨ Recent Enhancements
 
@@ -512,9 +520,10 @@ curl -X POST https://your-app.railway.app/api/lifx/resolve_selector \
 5. **Session log isolation:**
 
    - **Issue**: Seeing other users' activity in your session logs
-   - **Fixed in v1.2.1**: Complete session isolation now implemented
-   - **Behavior**: You only see your own MCP processes + system logs
-   - **Privacy**: Other sessions' LIFX commands are hidden from your view
+   - **FULLY FIXED in v1.2.1**: Complete session isolation now implemented for ALL logging systems
+   - **Behavior**: You only see your own MCP processes + system logs (no cross-session leakage)
+   - **Privacy**: Other sessions' LIFX commands and MCP activity completely hidden from your view
+   - **Technical**: Both winston logger and MCP callback systems now properly session-isolated
 
 6. **Railway vs API logs difference:**
 
@@ -522,6 +531,7 @@ curl -X POST https://your-app.railway.app/api/lifx/resolve_selector \
    - **API logs** (`/api/logs/*`): Show session-specific + system logs from memory
    - **Why different**: API serves privacy-protected, session-isolated logs
    - **Expected**: API logs are filtered per session for multi-user privacy
+   - **Post-fix**: Cross-session leakage completely eliminated
 
 ### Monitoring
 

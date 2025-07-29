@@ -402,7 +402,8 @@ const callClaudeWithMcp = async (
 							const toolResult = await callMcpMethod(
 								mcpProcess,
 								content.name,
-								content.input
+								content.input,
+								sessionId
 							);
 
 							// Log the successful result

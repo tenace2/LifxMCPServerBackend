@@ -330,7 +330,7 @@ app.post(
 		} finally {
 			// Clean up MCP process
 			if (mcpProcess) {
-				cleanupMcpProcess(mcpProcess);
+				cleanupMcpProcess(mcpProcess, req.sessionId);
 			}
 		}
 	}
@@ -364,7 +364,12 @@ app.post(
 			// Spawn MCP server with LIFX token and session context
 			mcpProcess = await spawnMcpServer(lifxApiKey, req.sessionId);
 			// Call MCP method
-			const result = await callMcpMethod(mcpProcess, action, params);
+			const result = await callMcpMethod(
+				mcpProcess,
+				action,
+				params,
+				req.sessionId
+			);
 
 			sessionLogger.info('LIFX control completed', {
 				requestId: req.requestId,
@@ -394,7 +399,7 @@ app.post(
 		} finally {
 			// Clean up MCP process
 			if (mcpProcess) {
-				cleanupMcpProcess(mcpProcess);
+				cleanupMcpProcess(mcpProcess, req.sessionId);
 			}
 		}
 	}

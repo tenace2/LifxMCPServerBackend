@@ -2,7 +2,50 @@
 
 ## Overview
 
-This implementation provides session-isolated logging with system log inclusion to ensure privacy between sessions while maintaining essential system visibility.
+This implementation provides session-isolated logging### 4. MCP Process Integration ✅ **FULLY IMPLEMENTED & VERIFIED**
+
+- **Session context**: Passed to MCP processes via environment variables (`SESSION_ID`)
+- **Complete isolation**: ALL MCP logs (stdout, stderr, spawn, exit) properly tagged with originating session
+- **Process lifecycle**: Spawn, execution, and termination events logged per session
+- **Fixed v1.2.1**: Resolved critical session leakage bug where BOTH logging systems were incorrectly shared across sessions
+
+#### Complete MCP Log Isolation Details:
+
+**Dual Logging System Fixed:**
+
+```javascript
+// 1. Winston logger calls - NOW include sessionId:
+logger.debug('MCP server stdout', {
+	output,
+	pid: mcpProcess.pid,
+	sessionId, // ✅ NOW INCLUDED
+});
+
+// 2. MCP capture calls - ALREADY had sessionId:
+captureMcpLog('info', 'MCP stdout', {
+	output,
+	pid: mcpProcess.pid,
+	sessionId, // ✅ ALWAYS INCLUDED
+});
+```
+
+**Previously**:
+
+- MCP logs lacking sessionId in winston calls were treated as system logs → visible to all sessions
+- Only captureMcpLog() calls were properly isolated
+
+**Now**:
+
+- ALL MCP activity properly isolated to originating session
+- Both logging systems consistently use sessionId
+- Complete elimination of cross-session data leakage
+
+#### Functions Updated for Complete Isolation:
+
+- ✅ `spawnMcpServer()` - All event handlers include sessionId
+- ✅ `callMcpMethod()` - Method calls, timeouts, errors include sessionId
+- ✅ `initializeMcpServer()` - Initialization logs include sessionId
+- ✅ `cleanupMcpProcess()` - Cleanup operations include sessionIdlusion to ensure privacy between sessions while maintaining essential system visibility.
 
 ## Key Features
 

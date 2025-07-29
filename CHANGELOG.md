@@ -4,23 +4,32 @@ All notable changes to the LIFX MCP Server Backend project will be documented in
 
 ## [1.2.1] - 2025-07-29
 
-### 🔒 Critical Privacy Fix
+### 🔒 Critical Privacy Fix - Session Log Isolation Complete
 
 #### Fixed
 
-- **Session Log Isolation**: Fixed critical issue where MCP process logs were leaking between user sessions
-  - **Problem**: MCP stdout/stderr logs (including light control results) were being shared across all sessions due to missing session context
+- **Complete Session Log Isolation**: Fixed critical issue where MCP process logs were leaking between user sessions
+  - **Problem**: Both MCP stdout/stderr logs AND winston logger calls were being shared across all sessions due to missing session context
   - **Impact**: Users could see other users' LIFX command results and MCP activity in their log views
-  - **Solution**: Added proper `sessionId` tagging to all MCP log capture calls in `services/mcpManager.js`
+  - **Root Cause**: Dual logging system where `logger.debug()` calls lacked `sessionId` while `captureMcpLog()` calls had it
+  - **Solution**: Added proper `sessionId` tagging to ALL logging calls in MCP manager system
   - **Result**: Complete session isolation - users now only see their own MCP process logs and system-level logs
   - **Security**: Prevents cross-session data exposure in multi-user Railway deployment
 
 #### Technical Details
 
-- Updated `captureMcpLog()` calls in MCP process handlers to include `sessionId` parameter
-- Fixed session context propagation in spawn, exit, stdout, and stderr handlers
-- Ensures MCP logs are properly categorized as session-specific rather than system-wide
-- Maintains backward compatibility with existing API endpoints
+- **Updated ALL winston logger calls** in `services/mcpManager.js` to include `sessionId` parameter
+- **Enhanced function signatures**: `callMcpMethod()`, `initializeMcpServer()`, `cleanupMcpProcess()` now accept `sessionId`
+- **Updated all callers**: Both `mcp-server-manager.js` and `claudeApi.js` now pass session context
+- **Fixed dual logging issue**: Both winston logger and MCP callback system now properly session-isolated
+- **Comprehensive coverage**: Spawn, exit, stdout, stderr, method calls, initialization, and cleanup all properly tagged
+- **Maintains backward compatibility** with existing API endpoints
+
+#### Verification
+
+- **Before**: `"logType": "system"` for MCP logs → visible to all sessions
+- **After**: `"logType": "session"` with proper `sessionId` → isolated per user
+- **Complete elimination** of cross-session log leakage
 
 ## [1.2.0] - 2025-01-23
 
