@@ -107,11 +107,26 @@ const isSystemLog = (message, meta) => {
 - Removes session logs when sessions expire
 - Prevents memory leaks
 
-### 4. MCP Process Integration
+### 4. MCP Process Integration ✅ **FULLY IMPLEMENTED**
 
-- Session context passed to MCP processes via environment variables
-- MCP logs tagged with originating session
-- Process spawn/termination logged per session
+- **Session context**: Passed to MCP processes via environment variables (`SESSION_ID`)
+- **Complete isolation**: All MCP logs (stdout, stderr, spawn, exit) properly tagged with originating session
+- **Process lifecycle**: Spawn, execution, and termination events logged per session
+- **Fixed v1.2.1**: Resolved critical session leakage bug where MCP logs were incorrectly shared across sessions
+
+#### MCP Log Isolation Details:
+
+```javascript
+// All MCP capture calls now include sessionId:
+captureMcpLog('info', 'MCP stdout', {
+	output,
+	pid: mcpProcess.pid,
+	sessionId, // ✅ NOW INCLUDED
+});
+```
+
+**Previously**: MCP logs lacking sessionId were treated as system logs → visible to all sessions  
+**Now**: All MCP activity properly isolated to originating session
 
 ## Migration Impact
 

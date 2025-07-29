@@ -83,6 +83,19 @@ GitHub Pages Client → Railway HTTP API → MCP Server → LIFX API
    curl http://localhost:3001/health
    ```
 
+## ⚡ Latest Updates
+
+### Session Privacy Fix (v1.2.1) - July 29, 2025
+
+**🔒 Critical Privacy Enhancement:**
+
+- **Fixed session log isolation** - Users can no longer see other users' MCP process activity
+- **Complete privacy protection** - LIFX command results now stay within originating sessions
+- **Enhanced multi-user security** - Proper session boundaries for Railway deployment
+- **Backward compatible** - No client changes required, improved privacy automatically applied
+
+This fix resolves a critical issue where MCP stdout logs (including "Successfully updated X lights" messages) were being shared across sessions, potentially exposing user activity to other concurrent users.
+
 ## ✨ Recent Enhancements
 
 ### Enhanced MCP Server (v1.2.0)
@@ -492,8 +505,23 @@ curl -X POST https://your-app.railway.app/api/lifx/resolve_selector \
    - Monitor server logs for process issues
 
 4. **Claude API errors:**
+
    - Verify Claude API key format (`sk-ant-...`)
    - Check API quota and billing
+
+5. **Session log isolation:**
+
+   - **Issue**: Seeing other users' activity in your session logs
+   - **Fixed in v1.2.1**: Complete session isolation now implemented
+   - **Behavior**: You only see your own MCP processes + system logs
+   - **Privacy**: Other sessions' LIFX commands are hidden from your view
+
+6. **Railway vs API logs difference:**
+
+   - **Railway logs**: Show console output (system-level activity)
+   - **API logs** (`/api/logs/*`): Show session-specific + system logs from memory
+   - **Why different**: API serves privacy-protected, session-isolated logs
+   - **Expected**: API logs are filtered per session for multi-user privacy
 
 ### Monitoring
 

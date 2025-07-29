@@ -74,6 +74,7 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 					code,
 					signal,
 					pid: mcpProcess.pid,
+					sessionId,
 				});
 			} else {
 				logger.debug(exitMessage, { code, signal, pid: mcpProcess.pid });
@@ -81,6 +82,7 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 					code,
 					signal,
 					pid: mcpProcess.pid,
+					sessionId,
 				});
 			}
 		});
@@ -90,7 +92,11 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 			const output = data.toString().trim();
 			if (output) {
 				logger.debug('MCP server stdout', { output, pid: mcpProcess.pid });
-				captureMcpLog('info', 'MCP stdout', { output, pid: mcpProcess.pid });
+				captureMcpLog('info', 'MCP stdout', {
+					output,
+					pid: mcpProcess.pid,
+					sessionId,
+				});
 			}
 		});
 
@@ -99,7 +105,11 @@ const spawnMcpServer = async (lifxApiKey, sessionId = null) => {
 			const error = data.toString().trim();
 			if (error) {
 				logger.warn('MCP server stderr', { error, pid: mcpProcess.pid });
-				captureMcpLog('error', 'MCP stderr', { error, pid: mcpProcess.pid });
+				captureMcpLog('error', 'MCP stderr', {
+					error,
+					pid: mcpProcess.pid,
+					sessionId,
+				});
 			}
 		});
 	});

@@ -2,6 +2,26 @@
 
 All notable changes to the LIFX MCP Server Backend project will be documented in this file.
 
+## [1.2.1] - 2025-07-29
+
+### 🔒 Critical Privacy Fix
+
+#### Fixed
+
+- **Session Log Isolation**: Fixed critical issue where MCP process logs were leaking between user sessions
+  - **Problem**: MCP stdout/stderr logs (including light control results) were being shared across all sessions due to missing session context
+  - **Impact**: Users could see other users' LIFX command results and MCP activity in their log views
+  - **Solution**: Added proper `sessionId` tagging to all MCP log capture calls in `services/mcpManager.js`
+  - **Result**: Complete session isolation - users now only see their own MCP process logs and system-level logs
+  - **Security**: Prevents cross-session data exposure in multi-user Railway deployment
+
+#### Technical Details
+
+- Updated `captureMcpLog()` calls in MCP process handlers to include `sessionId` parameter
+- Fixed session context propagation in spawn, exit, stdout, and stderr handlers
+- Ensures MCP logs are properly categorized as session-specific rather than system-wide
+- Maintains backward compatibility with existing API endpoints
+
 ## [1.2.0] - 2025-01-23
 
 ### ✨ Enhanced MCP Server for Better AI Chatbot Usability

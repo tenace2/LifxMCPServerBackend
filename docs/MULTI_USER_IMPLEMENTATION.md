@@ -72,6 +72,7 @@ const MAX_SESSIONS_PER_IP = isDevelopment ? 10 : 1;
 - ✅ **Request size limits**: 1MB max payload
 - ✅ **Session expiration**: 24-hour automatic cleanup
 - ✅ **Access control**: Demo key still required
+- ✅ **Session log isolation**: Complete privacy between users (v1.2.1)
 
 ### Abuse Protection:
 
@@ -80,6 +81,14 @@ const MAX_SESSIONS_PER_IP = isDevelopment ? 10 : 1;
 - IP-based rate limiting prevents rapid-fire attacks
 - Resource limiting prevents server overload
 - Input validation and sanitization remain active
+- **Complete session isolation**: Users cannot see each other's MCP activity or logs
+
+### Privacy Protection (Enhanced v1.2.1):
+
+- ✅ **MCP process isolation**: Each user's LIFX commands are private
+- ✅ **Log segregation**: Session-specific logs prevent data leakage
+- ✅ **Activity privacy**: Users only see their own light control history
+- ✅ **Error isolation**: Debug information stays within originating session
 
 ## Benefits
 
