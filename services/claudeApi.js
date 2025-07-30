@@ -366,12 +366,18 @@ const callClaudeWithMcp = async (
 		let response = await anthropic.messages.create(request);
 		let totalUsage = { ...response.usage };
 		let conversationMessages = [{ role: 'user', content: message }];
+		let initialResponseText = null; // Track the first response text
 
 		// Continue the conversation until Claude is done (not making more tool calls)
 		while (response.stop_reason === 'tool_use') {
 			// Log Claude's text response
 			const textContent = response.content.find((c) => c.type === 'text');
 			if (textContent) {
+				// Capture the first initial response text
+				if (!initialResponseText) {
+					initialResponseText = textContent.text;
+				}
+
 				sessionLogger.info('Claude response text', {
 					response: textContent.text,
 				});
@@ -527,11 +533,13 @@ const callClaudeWithMcp = async (
 			inputTokens: totalUsage.input_tokens,
 			outputTokens: totalUsage.output_tokens,
 			stopReason: response.stop_reason,
+			hasInitialResponse: !!initialResponseText,
 		});
 
 		return {
 			success: true,
 			response: response,
+			initialResponse: initialResponseText, // Add the initial response text
 			usage: totalUsage,
 		};
 	} catch (error) {
