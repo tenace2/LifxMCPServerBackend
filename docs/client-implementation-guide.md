@@ -245,6 +245,56 @@ const sessionId = `session_${Date.now()}_${Math.random()
 - Sessions are automatically cleaned up on expiry
 - Each session is tracked independently regardless of IP address
 
+### Session Tracking Headers
+
+The server sends session usage information in response headers for all authenticated requests:
+
+```javascript
+// Response headers automatically included
+{
+  'x-requests-used': '15',      // Number of requests used in session
+  'x-requests-remaining': '85', // Number of requests remaining
+  'x-daily-limit': '100'        // Total request limit per session
+}
+```
+
+**Important:** To read these headers in browser JavaScript, the server must include them in the `exposedHeaders` CORS configuration:
+
+```javascript
+// Server CORS configuration (required)
+const corsOptions = {
+	// ... other options
+	exposedHeaders: ['x-requests-used', 'x-requests-remaining', 'x-daily-limit'],
+};
+```
+
+**Frontend header reading example:**
+
+```javascript
+const response = await fetch('/api/lifx/set_color', {
+	method: 'POST',
+	headers: {
+		'Content-Type': 'application/json',
+		'x-demo-key': 'LifxDemo',
+		'x-session-id': sessionId,
+	},
+	body: JSON.stringify({
+		/* request data */
+	}),
+});
+
+// Read session tracking headers
+const requestsUsed = response.headers.get('x-requests-used');
+const requestsRemaining = response.headers.get('x-requests-remaining');
+const dailyLimit = response.headers.get('x-daily-limit');
+
+if (requestsUsed && requestsRemaining) {
+	console.log(
+		`Session usage: ${requestsUsed}/${dailyLimit} (${requestsRemaining} remaining)`
+	);
+}
+```
+
 ## Session Info Endpoint
 
 ### GET /api/session-info

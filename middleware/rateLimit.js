@@ -78,11 +78,20 @@ const sessionLimiter = (req, res, next) => {
 	const newCount = currentCount + 1;
 	sessionRequestCount.set(sessionId, newCount);
 
-	// Add request count headers
-	res.set({
-		'X-Requests-Used': newCount.toString(),
-		'X-Requests-Remaining': (SESSION_REQUEST_LIMIT - newCount).toString(),
-	});
+	// Attach session info to request for use in route handlers
+	req.sessionUsage = {
+		used: newCount,
+		remaining: SESSION_REQUEST_LIMIT - newCount,
+		dailyLimit: SESSION_REQUEST_LIMIT,
+	};
+
+	// Add request count headers (backup - route handlers should also set these)
+	res.setHeader('x-requests-used', newCount.toString());
+	res.setHeader(
+		'x-requests-remaining',
+		(SESSION_REQUEST_LIMIT - newCount).toString()
+	);
+	res.setHeader('x-daily-limit', SESSION_REQUEST_LIMIT.toString());
 
 	next();
 };

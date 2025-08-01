@@ -689,6 +689,14 @@ const corsOptions = {
 	],
 	credentials: true,
 	optionsSuccessStatus: 200,
+	methods: ['GET', 'POST', 'OPTIONS'],
+	allowedHeaders: [
+		'Content-Type',
+		'Authorization',
+		'x-demo-key',
+		'x-session-id',
+	],
+	exposedHeaders: ['x-requests-used', 'x-requests-remaining', 'x-daily-limit'],
 };
 
 app.use(cors(corsOptions));

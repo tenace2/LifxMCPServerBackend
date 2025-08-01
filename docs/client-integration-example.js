@@ -5,10 +5,30 @@ class LifxApiClient {
 		this.backendUrl = backendUrl;
 		this.sessionId = this.generateSessionId();
 		this.isServerOnline = true;
+		this.sessionInfo = {
+			requestsUsed: 0,
+			requestsRemaining: 100,
+			dailyLimit: 100,
+		};
 	}
 
 	generateSessionId() {
 		return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+	}
+
+	// Update session info from response headers
+	updateSessionInfoFromHeaders(response) {
+		const requestsUsed = response.headers.get('x-requests-used');
+		const requestsRemaining = response.headers.get('x-requests-remaining');
+		const dailyLimit = response.headers.get('x-daily-limit');
+
+		if (requestsUsed && requestsRemaining && dailyLimit) {
+			this.sessionInfo = {
+				requestsUsed: parseInt(requestsUsed),
+				requestsRemaining: parseInt(requestsRemaining),
+				dailyLimit: parseInt(dailyLimit),
+			};
+		}
 	}
 
 	async checkServerHealth() {
@@ -61,6 +81,9 @@ class LifxApiClient {
 				}),
 			});
 
+			// Update session tracking info from headers
+			this.updateSessionInfoFromHeaders(response);
+
 			if (!response.ok) {
 				const errorData = await response.json();
 				throw new Error(errorData.error || `Server error: ${response.status}`);
@@ -100,6 +123,9 @@ class LifxApiClient {
 				}),
 			});
 
+			// Update session tracking info from headers
+			this.updateSessionInfoFromHeaders(response);
+
 			if (!response.ok) {
 				const errorData = await response.json();
 				throw new Error(errorData.error || `Server error: ${response.status}`);
@@ -114,6 +140,18 @@ class LifxApiClient {
 			}
 			throw error;
 		}
+	}
+
+	// Get current session usage information
+	getSessionUsage() {
+		return {
+			used: this.sessionInfo.requestsUsed,
+			remaining: this.sessionInfo.requestsRemaining,
+			total: this.sessionInfo.dailyLimit,
+			percentage: Math.round(
+				(this.sessionInfo.requestsUsed / this.sessionInfo.dailyLimit) * 100
+			),
+		};
 	}
 }
 

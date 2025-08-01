@@ -20,9 +20,9 @@ https://tenace2.github.io/LifxFrontEnd/
 
 If you create your own front end client for this server you can alter the CORS
 section of this code in the `mcp-server-manager.js` code at about line 60, a snippet
-is previded below. As you can see this server is very restricted.
+is provided below. As you can see this server is very restricted.
 
-```
+```javascript
 // CORS configuration
 const corsOptions = {
 	origin: process.env.ALLOWED_ORIGINS?.split(',') || [
@@ -30,7 +30,20 @@ const corsOptions = {
 		'http://localhost:9003',
 		'http://localhost:5173', // Added for local client testing
 	],
+	credentials: true,
+	optionsSuccessStatus: 200,
+	methods: ['GET', 'POST', 'OPTIONS'],
+	allowedHeaders: [
+		'Content-Type',
+		'Authorization',
+		'x-demo-key',
+		'x-session-id',
+	],
+	exposedHeaders: ['x-requests-used', 'x-requests-remaining', 'x-daily-limit'],
+};
 ```
+
+**Important:** The `exposedHeaders` property is crucial for frontend applications to read session tracking headers. Without it, browsers will block access to the custom headers for security reasons.
 
 ## 🏗️ Architecture
 

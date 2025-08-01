@@ -47,6 +47,21 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Helper function to ensure session headers are included in responses
+const sendJsonWithSessionHeaders = (res, req, data, statusCode = 200) => {
+	// Set session headers if available
+	if (req.sessionUsage) {
+		res.setHeader('x-requests-used', req.sessionUsage.used.toString());
+		res.setHeader(
+			'x-requests-remaining',
+			req.sessionUsage.remaining.toString()
+		);
+		res.setHeader('x-daily-limit', req.sessionUsage.dailyLimit.toString());
+	}
+
+	return res.status(statusCode).json(data);
+};
+
 // Security middleware
 app.use(
 	helmet({
@@ -71,6 +86,7 @@ const corsOptions = {
 		'x-demo-key',
 		'x-session-id',
 	],
+	exposedHeaders: ['x-requests-used', 'x-requests-remaining', 'x-daily-limit'],
 };
 
 app.use(cors(corsOptions));
@@ -252,17 +268,22 @@ app.post(
 				sessionId: req.sessionId,
 			});
 
-			res.json(result);
+			sendJsonWithSessionHeaders(res, req, result);
 		} catch (error) {
 			logger.error('Claude connection test error', {
 				requestId: req.requestId,
 				error: error.message,
 			});
 
-			res.status(500).json({
-				error: 'Internal server error',
-				code: 'INTERNAL_ERROR',
-			});
+			sendJsonWithSessionHeaders(
+				res,
+				req,
+				{
+					error: 'Internal server error',
+					code: 'INTERNAL_ERROR',
+				},
+				500
+			);
 		}
 	}
 );
@@ -315,7 +336,7 @@ app.post(
 				usage: claudeResponse.usage,
 			});
 
-			res.json(claudeResponse);
+			sendJsonWithSessionHeaders(res, req, claudeResponse);
 		} catch (error) {
 			logger.error('Claude chat error', {
 				requestId: req.requestId,
@@ -323,10 +344,15 @@ app.post(
 				error: error.message,
 			});
 
-			res.status(500).json({
-				error: 'Internal server error',
-				code: 'CLAUDE_ERROR',
-			});
+			sendJsonWithSessionHeaders(
+				res,
+				req,
+				{
+					error: 'Internal server error',
+					code: 'CLAUDE_ERROR',
+				},
+				500
+			);
 		} finally {
 			// Clean up MCP process
 			if (mcpProcess) {
@@ -378,7 +404,7 @@ app.post(
 				success: true,
 			});
 
-			res.json({
+			sendJsonWithSessionHeaders(res, req, {
 				success: true,
 				action,
 				result,
@@ -391,11 +417,16 @@ app.post(
 				error: error.message,
 			});
 
-			res.status(500).json({
-				error: error.message,
-				code: 'LIFX_ERROR',
-				action,
-			});
+			sendJsonWithSessionHeaders(
+				res,
+				req,
+				{
+					error: error.message,
+					code: 'LIFX_ERROR',
+					action,
+				},
+				500
+			);
 		} finally {
 			// Clean up MCP process
 			if (mcpProcess) {
@@ -482,6 +513,14 @@ app.get('/api/session-info', accessControl, sessionTracker, (req, res) => {
 			clientIP,
 			requestId: req.requestId,
 		});
+
+		// Set session headers manually since this endpoint doesn't use sessionLimiter
+		res.setHeader('x-requests-used', sessionInfo.requestsUsed.toString());
+		res.setHeader(
+			'x-requests-remaining',
+			sessionInfo.requestsRemaining.toString()
+		);
+		res.setHeader('x-daily-limit', sessionInfo.requestLimit.toString());
 
 		res.json({
 			success: true,

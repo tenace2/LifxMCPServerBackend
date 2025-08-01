@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Header Test</title>
+	</head>
+	<body>
+		<h1>Session Header Test</h1>
+		<button id="testBtn">Test Headers</button>
+		<div id="output"></div>
+
+		<script>
+			document.getElementById('testBtn').addEventListener('click', async () => {
+				const output = document.getElementById('output');
+
+				try {
+					const response = await fetch('/api/session-info', {
+						headers: {
+							'x-demo-key': 'LifxDemo',
+							'x-session-id': 'web-test-session-' + Date.now(),
+						},
+					});
+
+					const data = await response.json();
+
+					// Test different ways to access headers
+					const results = {
+						// Try lowercase
+						'lowercase access': {
+							'x-requests-used': response.headers.get('x-requests-used'),
+							'x-requests-remaining': response.headers.get(
+								'x-requests-remaining'
+							),
+							'x-daily-limit': response.headers.get('x-daily-limit'),
+						},
+						// Try Pascal case
+						'Pascal case access': {
+							'X-Requests-Used': response.headers.get('X-Requests-Used'),
+							'X-Requests-Remaining': response.headers.get(
+								'X-Requests-Remaining'
+							),
+							'X-Daily-Limit': response.headers.get('X-Daily-Limit'),
+						},
+						// Try iterating all headers
+						'all headers': {},
+					};
+
+					// Get all headers
+					for (const [key, value] of response.headers) {
+						if (key.includes('request') || key.includes('daily')) {
+							results['all headers'][key] = value;
+						}
+					}
+
+					output.innerHTML =
+						'<pre>' + JSON.stringify(results, null, 2) + '</pre>';
+				} catch (error) {
+					output.innerHTML = '<pre>Error: ' + error.message + '</pre>';
+				}
+			});
+		</script>
+	</body>
+</html>
