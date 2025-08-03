@@ -2,6 +2,9 @@
 
 A secure backend server for the LIFX-Claude smart light control application. This server provides RESTful API endpoints for controlling LIFX smart lights through Claude AI integration using the Model Context Protocol (MCP).
 
+An overall high level explanation of both the client and this server can be accessed in my blog:
+https://my-digital-garden-vercel-orpin.vercel.app/upgraded-claude-ai-mcp-lifx/lifx-mcp-server-with-claude-chat-on-railway/
+
 Note this project was developed using Copilot AI agent Claude Sonnet 4.
 Please review the server_copilot_instructions.md document to obtain an
 overview of the guidelines the AI agent used when developing this project.
